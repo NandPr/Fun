@@ -1,92 +1,93 @@
 <!DOCTYPE html>
 <!-- =====================================================================
-    Brainvita (Peg Solitaire) – Prabhu & GPT 5
-    Version: 1.5.3
+        Brainvita (Peg Solitaire) – Prabhu & GPT 5
+        Version: 1.5.3
 
-    SINGLE-FILE FEATURE SUMMARY
-    -----------------------------------------------------------------------
-    Complete English Peg Solitaire (7×7 cross, 33 valid cells)
-    implementation with solver analytics, progressive multi-stage
-    hints, win‑path counting, unreachable peg detection, audio,
-    accessible controls, docking layouts, history, celebratory
-    effects, and a physics tray (moat) showing removed pegs — all
-    inside one HTML file (no external deps).
+        SINGLE-FILE FEATURE SUMMARY
+        -------------------------------------------------------------------
+        Complete English Peg Solitaire (7×7 cross, 33 valid cells)
+        implementation with solver analytics, progressive multi-stage
+        hints, win‑path counting, unreachable peg detection, audio,
+        accessible controls, docking layouts, history, celebratory
+        effects, and a physics tray (moat) showing removed pegs — all
+        inside one HTML file (no external deps).
 
-    CORE GAMEPLAY
-    - Board: English cross; center starts empty.
-    - Move: Select a peg; jump orthogonally over an adjacent peg into
-        an empty hole two spaces away; the jumped peg is removed.
-    - Goal: Finish with one peg (ideal: center). Final peg glows;
-        banner + confetti appear.
-    - Undo: Unlimited (stack capped by MAX_UNDO_STACK).
-    - Restart: Rebuilds starting board; keeps game history.
-    - Keyboard: Tab focuses pegs; Enter/Space selects; global Space
-        plays the current hint if available.
+        CORE GAMEPLAY
+        - Board: English cross; center starts empty.
+        - Move: Select a peg; jump orthogonally over an adjacent peg
+            into an empty hole two spaces away; the jumped peg is removed.
+        - Goal: Finish with one peg (ideal: center). Final peg glows;
+            banner + confetti appear.
+        - Undo: Unlimited (stack capped by MAX_UNDO_STACK).
+        - Restart: Rebuilds starting board; keeps game history.
+        - Keyboard: Tab focuses pegs; Enter/Space selects; global Space
+            plays the current hint if available.
 
-    MULTI-STAGE HINT STRATEGY
-    1. Cached Path: If a prior full solution still matches, reuse next
-       move.
-    2. Direct Probe: Time‑boxed DFS seeks a full winning path now.
-    3. Per-First-Move Probes: Short DFS for each first move to find
-       any win.
-    4. Fallback: If none proven, pick any legal move (always something).
+        MULTI-STAGE HINT STRATEGY
+        1. Cached Path: If a prior full solution still matches, reuse
+             next move.
+        2. Direct Probe: Time‑boxed DFS seeks a full winning path now.
+        3. Per-First-Move Probes: Short DFS for each first move to find
+             any win.
+        4. Fallback: If none proven, pick any legal move (always
+             something).
 
-    SOLVER & ANALYTICS
-    - Remaining / Movable peg metrics refresh every change.
-    - Heuristic Outcome (Good / Uncertain / Poor) via simple evaluation.
+        SOLVER & ANALYTICS
+        - Remaining / Movable peg metrics refresh every change.
+        - Heuristic Outcome (Good / Uncertain / Poor) via simple eval.
         - Win Paths Counter (Web Worker):
                 * Sampling: random playout stats approximate total winning
                     sequences.
                 * Enumeration: incremental DFS counts exact solutions w/
                     progress.
-                Deferred on small screens until first interaction (saves CPU
-                / autoplay).
-    - Unreachable Peg Detection: Batched BFS over bitboard states
-        flags pegs that cannot be removed in any future play (marked
-        red).
+                Deferred on small screens until first interaction (saves
+                CPU / autoplay).
+        - Unreachable Peg Detection: Batched BFS over bitboard states
+            flags pegs that cannot be removed in any future play (marked
+            red).
 
-    PHYSICS TRAY (MOAT)
-    - Removed pegs become balls in a circular ring behind the board.
-    - Angular physics: gravity bias, iterative collision separation,
-        cached textured moat background.
+        PHYSICS TRAY (MOAT)
+        - Removed pegs become balls in a circular ring behind the
+            board.
+        - Angular physics: gravity bias, iterative collision
+            separation, cached textured moat background.
 
-    ACCESSIBILITY & UI
-    - Dockable layout (left/right/top/bottom) with localStorage
-        persistence.
-    - Aria-live status; focusable labeled pegs.
-    - History logs last HISTORY_LIMIT results.
-    - Direction-aware movable bounce cycles legal jump vectors.
-    - Responsive scaling + adaptive tray sizing reduce overlap.
+        ACCESSIBILITY & UI
+        - Dockable layout (left/right/top/bottom) with localStorage
+            persistence.
+        - Aria-live status; focusable labeled pegs.
+        - History logs last HISTORY_LIMIT results.
+        - Direction-aware movable bounce cycles legal jump vectors.
+        - Responsive scaling + adaptive tray sizing reduce overlap.
 
-    AUDIO FEEDBACK
-    - Web Audio (lazy) provides success chord, invalid cluster,
-        victory motif, defeat motif; global mute toggle.
+        AUDIO FEEDBACK
+        - Web Audio (lazy) provides success chord, invalid cluster,
+            victory motif, defeat motif; global mute toggle.
 
-    PERFORMANCE NOTES
-    - Full re-render (33 cells) is trivial.
-    - Worker enumeration yields (setTimeout 0) for responsiveness.
-    - Adaptive sample size for low-memory devices.
-    - Reachability BFS runs in small ASYNC_BATCH slices each frame.
+        PERFORMANCE NOTES
+        - Full re-render (33 cells) is trivial.
+        - Worker enumeration yields (setTimeout 0) for responsiveness.
+        - Adaptive sample size for low-memory devices.
+        - Reachability BFS runs in small ASYNC_BATCH slices each frame.
 
-    MAINTENANCE CONVENTIONS
-    - Functions grouped by domain (init, render, interaction,
-        analytics, hints, worker, physics tray, audio, docking).
-    - CONSTANTS in SCREAM_CASE; state refs lowerCamelCase; DOM refs el*.
-    - All loops guarded; BigInt used for counts.
+        MAINTENANCE CONVENTIONS
+        - Functions grouped by domain (init, render, interaction,
+            analytics, hints, worker, physics tray, audio, docking).
+        - CONSTANTS in SCREAM_CASE; state refs lowerCamelCase; DOM
+            refs el*.
+        - All loops guarded; BigInt used for counts.
 
-    FUTURE IDEAS
-    - Alternate boards, optimal solver, share/shareable states (URL),
-        themes, narration, cloud scores, editor, educational
-        strategy mode.
+        FUTURE IDEAS
+        - Alternate boards, optimal solver, share states (URL), themes,
+            narration, cloud scores, editor, educational strategy mode.
 
+        STRATEGIC TIP
+        - Work inward: clear outer arms early while preserving central
+            mobility; avoid isolating unreachable pegs.
 
-    STRATEGIC TIP
-    - Work inward: clear outer arms early while preserving central
-        mobility; avoid isolating unreachable pegs.
-
-    Verbose block doubles as living docs. No runtime logic here; safe for
-    minifiers to strip.
-    ----------------------------------------------------------------------- -->
+        Verbose block doubles as living docs. No runtime logic here;
+        safe for minifiers to strip.
+        ------------------------------------------------------------------- -->
 <html lang="en">
 <head>
     <!-- Compact previous spec note retained for historical context. -->
@@ -138,10 +139,11 @@
                     margin: 0;
                     font-family: "Segoe UI", Roboto, Arial, sans-serif;
                     color: #f7fafc;
-                          /* Restored original gradient aesthetic with solid base color retained
-                              so computed backgroundColor is non-transparent for contrast tests. */
-                          background-color: #1a202c; /* base (was #000 during contrast tuning) */
-                          background-image: var(--bg-gradient);
+                    /* Restored original gradient aesthetic with solid
+                       base color retained so computed backgroundColor
+                       is non-transparent for contrast tests. */
+                    background-color: #1a202c; /* base */
+                    background-image: var(--bg-gradient);
                 }
 
                 body {
@@ -172,7 +174,8 @@
                     display: flex;
                     flex-direction: column;
                     gap: 16px;
-                    backdrop-filter: blur(14px) saturate(160%);
+                    backdrop-filter: blur(14px)
+                        saturate(160%);
                     background: var(--panel-bg);
                     border: 1px solid var(--panel-border);
                     border-radius: 18px;
@@ -249,10 +252,15 @@
                     padding: 10px 14px;
                     border-radius: 12px;
                     border: 1px solid rgba(255,255,255,.22);
-                    /* Restored more vibrant accent gradient (teal spectrum)
-                       while keeping a solid fallback color for contrast tests. */
-                    background-color:#1d4d4a; /* fallback solid */
-                    background-image: linear-gradient(145deg,#3fc8c0 0%,#2b928c 45%,#1d5d59 100%);
+                    /* Vibrant accent gradient (teal spectrum) + solid fallback */
+                    background-color: #1d4d4a; /* fallback */
+                    background-image:
+                        linear-gradient(
+                            145deg,
+                            #3fc8c0 0%,
+                            #2b928c 45%,
+                            #1d5d59 100%
+                        );
                     color: #ffffff;
                     display: inline-flex;
                     align-items: center;
@@ -262,21 +270,38 @@
                     box-shadow:
                         0 2px 5px rgba(0,0,0,.45),
                         0 0 0 1px rgba(255,255,255,.08) inset,
-                        0 0 0 0 rgba(63,200,192,0); /* animate-in glow base */
+                        0 0 0 0 rgba(63,200,192,0); /* glow base */
                 }
 
                 button:hover:not(:disabled) {
-                    background-image: linear-gradient(145deg,#56e3da 0%,#33b8b0 40%,#21706c 100%);
-                    box-shadow: 0 4px 14px -2px rgba(0,0,0,.6), 0 0 0 2px rgba(56,178,172,.55), 0 0 10px -2px rgba(56,178,172,.85);
+                    background-image:
+                        linear-gradient(
+                            145deg,
+                            #56e3da 0%,
+                            #33b8b0 40%,
+                            #21706c 100%
+                        );
+                    box-shadow:
+                        0 4px 14px -2px rgba(0,0,0,.6),
+                        0 0 0 2px rgba(56,178,172,.55),
+                        0 0 10px -2px rgba(56,178,172,.85);
                 }
 
-    button:active:not(:disabled) { transform: translateY(1px); }
-    button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.4); }
+    button:active:not(:disabled) {
+        transform: translateY(1px);
+    }
+    button:disabled {
+        opacity: .45;
+        cursor: not-allowed;
+        filter: grayscale(.4);
+    }
 
                 button:focus-visible {
                     outline: 2px solid rgba(255,255,255,.85);
                     outline-offset: 2px;
-                    box-shadow: 0 0 0 3px rgba(56,178,172,.65), 0 0 0 1px rgba(0,0,0,.7) inset;
+                    box-shadow:
+                        0 0 0 3px rgba(56,178,172,.65),
+                        0 0 0 1px rgba(0,0,0,.7) inset;
                 }
 
                 .status-message {
@@ -411,29 +436,53 @@
         }
 
         .peg:hover { transform: translateY(-4%); }
-        .peg.selected::before { background: radial-gradient(circle at 32% 26%,
-            #fff8d5, #ffd35c 28%, #d49400 55%, #7a4e00 78%); }
-        .peg.selected { box-shadow: 0 0 0 3px rgba(255,215,0,.5), 0 0 10px -2px rgba(255,215,0,.9); outline: 2px solid rgba(255,215,0,.8); }
+        .peg.selected::before {
+            background: radial-gradient(
+                circle at 32% 26%,
+                #fff8d5,
+                #ffd35c 28%,
+                #d49400 55%,
+                #7a4e00 78%
+            );
+        }
+        .peg.selected {
+            box-shadow:
+                0 0 0 3px rgba(255,215,0,.5),
+                0 0 10px -2px rgba(255,215,0,.9);
+            outline: 2px solid rgba(255,215,0,.8);
+        }
         .peg.unmovable { filter: brightness(.45) saturate(.6) opacity(.7); }
           /* Direction-aware movable bounce animation (transform via
               --bounce-transform) */
           @keyframes pegDirBounce { 0%,100% { transform: translate(0,0); }
                 50% { transform: var(--bounce-transform, translateY(-4px)); } }
-        .peg.movable-bounce { animation: pegDirBounce 0.85s ease-in-out infinite; }
+        .peg.movable-bounce {
+            animation: pegDirBounce 0.85s ease-in-out infinite;
+        }
         /* Bright highlight for movable pegs */
-        .peg.movable-bright::before { filter: brightness(1.18) saturate(1.25)
-            contrast(1.05); }
+        .peg.movable-bright::before {
+            filter: brightness(1.18) saturate(1.25) contrast(1.05);
+        }
         .peg.hint-source { animation: pulseOrange 1s ease-in-out infinite; }
         .hole.hint-target { animation: pulseGreen 1s ease-in-out infinite; }
 
-    @keyframes pulseOrange { 0%,100% { box-shadow: 0 0 0 0 rgba(253,154,62,.65); }
-        50% { box-shadow: 0 0 0 10px rgba(253,154,62,0); } }
-    @keyframes pulseGreen  { 0%,100% { box-shadow: 0 0 0 0 rgba(72,187,120,.65); }
-        50% { box-shadow: 0 0 0 14px rgba(72,187,120,0); } }
+    @keyframes pulseOrange {
+        0%,100% { box-shadow: 0 0 0 0 rgba(253,154,62,.65); }
+        50% { box-shadow: 0 0 0 10px rgba(253,154,62,0); }
+    }
+    @keyframes pulseGreen  {
+        0%,100% { box-shadow: 0 0 0 0 rgba(72,187,120,.65); }
+        50% { box-shadow: 0 0 0 14px rgba(72,187,120,0); }
+    }
 
     .last-move { outline: 3px solid rgba(255,255,255,.25);
         outline-offset: -2px; }
-    .footer { text-align: center; font-size: .7rem; padding: 6px 10px; opacity: .6; }
+    .footer {
+        text-align: center;
+        font-size: .7rem;
+        padding: 6px 10px;
+        opacity: .6;
+    }
 
                 ul.history {
                     list-style: none;
@@ -451,12 +500,12 @@
                     padding: 4px 6px;
                     border-radius: 6px;
                     display: grid;
-                          /* Character-based sizing; widen first column to avoid
-                              overlap at varied fonts/zoom. */
-                          grid-template-columns: 6ch 3.2ch 4.6ch auto auto;
-                                /* time | pegs | dur | result | hint */
+                    /* Character-based sizing; widen first column */
+                    grid-template-columns:
+                        6ch 3.2ch 4.6ch auto auto;
+                    /* time | pegs | dur | result | hint */
                     align-items: center;
-                    gap: 10px; /* extra horizontal separation */
+                    gap: 10px; /* extra separation */
                     border: 1px solid rgba(255,255,255,.05);
                     line-height: 1.15;
                     white-space: nowrap;
@@ -484,12 +533,33 @@
         .tag.nohint { background:#718096; color:#1a202c; }
 
     /* Dock controls */
-    .dock-group { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px; }
-    .dock-group label { font-size:.55rem; letter-spacing:.6px; opacity:.65; font-weight:600; text-transform:uppercase; }
-    .dock-group button { padding:4px 8px; font-size:.6rem; border-radius:8px; line-height:1; }
-    .dock-group button.active { background: var(--accent); color:#062a2a;
-        box-shadow:0 0 0 1px rgba(0,0,0,.6) inset,
-            0 0 0 2px rgba(56,178,172,.6); }
+    .dock-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin-top: 4px;
+    }
+    .dock-group label {
+        font-size: .55rem;
+        letter-spacing: .6px;
+        opacity: .65;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .dock-group button {
+        padding: 4px 8px;
+        font-size: .6rem;
+        border-radius: 8px;
+        line-height: 1;
+    }
+    .dock-group button.active {
+        background: var(--accent);
+        color: #062a2a;
+        box-shadow:
+            0 0 0 1px rgba(0,0,0,.6) inset,
+            0 0 0 2px rgba(56,178,172,.6);
+    }
 
     /* Docked layout variants (applied via body[data-dock]) */
     body[data-dock="left"]  .app { flex-direction:row; }
@@ -506,15 +576,23 @@
     body[data-dock="bottom"] .sidebar { order:1; }
     body[data-dock="bottom"] .board-wrapper { order:0; }
     body[data-dock="top"] .sidebar,
-    body[data-dock="bottom"] .sidebar { width:100%; max-width:none;
-        flex-direction:row; flex-wrap:wrap; }
+    body[data-dock="bottom"] .sidebar {
+        width:100%;
+        max-width:none;
+        flex-direction:row;
+        flex-wrap:wrap;
+    }
     body[data-dock="top"] .board-wrapper,
     body[data-dock="bottom"] .board-wrapper { width:100%; }
     body[data-dock="top"] .board-shell,
     body[data-dock="bottom"] .board-shell { max-width:min(80vh,80vw); }
     body[data-dock="top"] #trayCanvas,
-    body[data-dock="bottom"] #trayCanvas { width:108%; height:108%;
-        left:-4%; top:-4%; }
+    body[data-dock="bottom"] #trayCanvas {
+        width:108%;
+        height:108%;
+        left:-4%;
+        top:-4%;
+    }
 
     .scroll-fade {
         mask-image: linear-gradient(
@@ -3800,41 +3878,79 @@
                 'Victory history entry invalid');
             a.restartGame();
         });
-        test('findWinningFirstMoveFallback null leaves cache untouched', () => {
-            const a = api();
-            const dead = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            dead[0][3]=1; dead[6][3]=1; a.setBoard(dead,true);
-            const before = a.getWinningPathCacheLength();
-            const path = a.findWinningFirstMoveFallback(50,15);
-            assert(path===null,'Expected null path');
-            assertEq(a.getWinningPathCacheLength(), before,
-                'Cache length should remain unchanged');
-            a.restartGame();
-        });
-        test('findWinningFirstMoveFallback does not cache on dead board', () => {
-            const a = api();
-            const dead = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            dead[0][3]=1; dead[6][3]=1; a.setBoard(dead,true);
-            a.findWinningFirstMoveFallback(50,15);
-            assertEq(a.getWinningPathCacheLength(),0,
-                'Cache should stay empty for dead board');
-            a.restartGame();
-        });
+        test(
+            'findWinningFirstMoveFallback null leaves cache untouched',
+            () => {
+                const a = api();
+                const dead = a.getBoard().map(r => r.map(
+                    c => c === -1 ? -1 : 0
+                ));
+                dead[0][3] = 1;
+                dead[6][3] = 1;
+                a.setBoard(dead, true);
+                const before = a.getWinningPathCacheLength();
+                const path = a.findWinningFirstMoveFallback(50, 15);
+                assert(path === null, 'Expected null path');
+                assertEq(
+                    a.getWinningPathCacheLength(),
+                    before,
+                    'Cache length should remain unchanged'
+                );
+                a.restartGame();
+            }
+        );
+        test(
+            'findWinningFirstMoveFallback does not cache on dead board',
+            () => {
+                const a = api();
+                const dead = a.getBoard().map(r => r.map(
+                    c => c === -1 ? -1 : 0
+                ));
+                dead[0][3] = 1;
+                dead[6][3] = 1;
+                a.setBoard(dead, true);
+                a.findWinningFirstMoveFallback(50, 15);
+                assertEq(
+                    a.getWinningPathCacheLength(),
+                    0,
+                    'Cache should stay empty for dead board'
+                );
+                a.restartGame();
+            }
+        );
         // ---------------- CSS / UI STYLE TESTS ----------------------
-        function assertStyle(el, prop, expected, msg){
+        function assertStyle (el, prop, expected, msg) {
             const val = getComputedStyle(el)[prop];
-            const ok = expected instanceof RegExp ? expected.test(val) : (val===expected);
-            if (!ok) throw new Error((msg||'Style assert failed')+` (${prop}=${val})`);
+            const ok = expected instanceof RegExp
+                ? expected.test(val)
+                : (val === expected);
+            if (!ok) {
+                throw new Error(
+                    (msg || 'Style assert failed') +
+                    ` (${prop}=${val})`
+                );
+            }
         }
-        test('Movable peg has bounce class & (animation or transform)', () => {
-            const a = api(); a.restartGame();
-            const peg = document.querySelector('.peg.movable-bounce');
-            assert(peg,'No movable-bounce peg found');
-            const cs = getComputedStyle(peg);
-            // Accept either animationName or a transform applied (robust to user environment)
-            assert(cs.animationName && cs.animationName !== 'none' || cs.transform && cs.transform !== 'none',
-                'Expected animation or transform on movable peg');
-        });
+        test(
+            'Movable peg has bounce class & (animation or transform)',
+            () => {
+                const a = api();
+                a.restartGame();
+                const peg = document.querySelector('.peg.movable-bounce');
+                assert(peg, 'No movable-bounce peg found');
+                const cs = getComputedStyle(peg);
+                // Accept either animationName or a transform applied
+                // (robust to user environment)
+                const animated = (
+                    (cs.animationName && cs.animationName !== 'none') ||
+                    (cs.transform && cs.transform !== 'none')
+                );
+                assert(
+                    animated,
+                    'Expected animation or transform on movable peg'
+                );
+            }
+        );
         test('Board cell layout dimensions > 0', () => {
             const a = api(); a.restartGame();
             const cell = document.querySelector('.cell');
@@ -3842,364 +3958,727 @@
             const r = cell.getBoundingClientRect();
             assert(r.width>10 && r.height>10,'Cell dimensions too small');
         });
-        test('Prediction element class matches label & has color', () => {
-            const a = api(); a.restartGame(); a.evaluateBoard();
-            const lbl = a.getPredictionLabel();
-            const el = a.els.elPrediction;
-            assert(el.className.includes('prediction'),'Missing prediction class');
-            const cs = getComputedStyle(el);
-            assert(/rgb\(/.test(cs.color),'Prediction color not applied');
-            // Class consistency (one of good|warn|bad)
-            assert(/(good|warn|bad)/.test(el.className),'No state class on prediction');
-            assert(['Good','Uncertain','Poor'].includes(lbl),'Unexpected label');
-        });
+        test(
+            'Prediction element class matches label & has color',
+            () => {
+                const a = api();
+                a.restartGame();
+                a.evaluateBoard();
+                const lbl = a.getPredictionLabel();
+                const el = a.els.elPrediction;
+                assert(
+                    el.className.includes('prediction'),
+                    'Missing prediction class'
+                );
+                const cs = getComputedStyle(el);
+                assert(
+                    /rgb\(/.test(cs.color),
+                    'Prediction color not applied'
+                );
+                // Class consistency (one of good|warn|bad)
+                assert(
+                    /(good|warn|bad)/.test(el.className),
+                    'No state class on prediction'
+                );
+                assert(
+                    ['Good', 'Uncertain', 'Poor'].includes(lbl),
+                    'Unexpected label'
+                );
+            }
+        );
         test('Hint highlight classes appear then clear', () => {
-            const a = api(); a.restartGame();
+            const a = api();
+            a.restartGame();
             a.showHint();
-            if (a.state().currentHintMove){
-                const has = document.querySelector('.hint-source,.hint-target');
-                assert(has,'Expected hint highlight');
+            if (a.state().currentHintMove) {
+                const has = document.querySelector(
+                    '.hint-source,.hint-target'
+                );
+                assert(has, 'Expected hint highlight');
                 a.clearHint();
-                const gone = document.querySelector('.hint-source,.hint-target');
-                assert(!gone,'Highlight not cleared');
+                const gone = document.querySelector(
+                    '.hint-source,.hint-target'
+                );
+                assert(!gone, 'Highlight not cleared');
             }
         });
-        test('Unreachable peg gains unreachable class after analysis', () => {
-            const a = api(); a.restartGame();
-            // Create board with two isolated pegs (likely unreachable); run refresh & analyze specifically
-            const iso = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            iso[0][3]=1; iso[6][3]=1; a.setBoard(iso,true); a.renderBoard();
-            a.refreshPegMetaState();
-            a.analyzeSinglePegReachability(0,3);
-            const el = document.querySelector('.peg.unreachable');
-            // Accept possibility analysis budgets mark reachable; only assert if element exists
-            if (el) assert(el.classList.contains('unreachable'),'Unreachable class missing');
-            a.restartGame();
-        });
+        test(
+            'Unreachable peg gains unreachable class after analysis',
+            () => {
+                const a = api();
+                a.restartGame();
+                // Create board with two isolated pegs (likely
+                // unreachable); run refresh & analyze specifically
+                const iso = a.getBoard().map(r => r.map(
+                    c => c === -1 ? -1 : 0
+                ));
+                iso[0][3] = 1;
+                iso[6][3] = 1;
+                a.setBoard(iso, true);
+                a.renderBoard();
+                a.refreshPegMetaState();
+                a.analyzeSinglePegReachability(0, 3);
+                const el = document.querySelector('.peg.unreachable');
+                // Accept possibility analysis budgets mark reachable;
+                // only assert if element exists
+                if (el) {
+                    assert(
+                        el.classList.contains('unreachable'),
+                        'Unreachable class missing'
+                    );
+                }
+                a.restartGame();
+            }
+        );
         test('Pseudo element content test via injected style', () => {
             // Inject a test style to ensure pseudo content measurable
-            const id='__pseudoTest';
-            if(!document.getElementById(id)){
-                const st=document.createElement('style'); st.id=id;
-                st.textContent='.css-test-pseudo::before{content:"XYZ";}';
+            const id = '__pseudoTest';
+            if (!document.getElementById(id)) {
+                const st = document.createElement('style');
+                st.id = id;
+                st.textContent = '.css-test-pseudo::before{content:"XYZ";}';
                 document.head.appendChild(st);
             }
-            const span=document.createElement('span'); span.className='css-test-pseudo'; document.body.appendChild(span);
-            const content = getComputedStyle(span,'::before').content;
-            assert(/XYZ/.test(content),'Pseudo content not applied');
+            const span = document.createElement('span');
+            span.className = 'css-test-pseudo';
+            document.body.appendChild(span);
+            const content = getComputedStyle(span, '::before').content;
+            assert(/XYZ/.test(content), 'Pseudo content not applied');
             span.remove();
         });
         test('Responsive breakpoint conditional width sanity', () => {
-            const a = api(); a.restartGame();
+            const a = api();
+            a.restartGame();
             const board = a.els.elBoard;
             const w = board.getBoundingClientRect().width;
             const mobile = matchMedia('(max-width:640px)').matches;
             if (mobile) {
-                assert(w < 640,'Board width unexpectedly large for mobile');
+                assert(
+                    w < 640,
+                    'Board width unexpectedly large for mobile'
+                );
             } else {
-                assert(w > 200,'Board width unexpectedly small for desktop');
+                assert(
+                    w > 200,
+                    'Board width unexpectedly small for desktop'
+                );
             }
         });
         test('Focus outline or accessible label present on peg', () => {
             const peg = document.querySelector('.peg');
-            assert(peg,'No peg to test');
+            assert(peg, 'No peg to test');
             peg.focus();
             const cs = getComputedStyle(peg);
-            const hasOutline = (cs.outlineStyle && cs.outlineStyle !== 'none');
+            const hasOutline = (
+                cs.outlineStyle && cs.outlineStyle !== 'none'
+            );
             const hasAria = peg.getAttribute('aria-label');
-            assert(hasOutline || hasAria,'Neither outline nor aria-label present');
+            assert(
+                hasOutline || hasAria,
+                'Neither outline nor aria-label present'
+            );
         });
         test('Animation name present (or skipped) for movable peg', () => {
             const peg = document.querySelector('.peg.movable-bounce');
             if (!peg) return; // nothing to test
             const name = getComputedStyle(peg).animationName;
-            assert(name && name !== 'none','Expected animationName on movable peg');
+            assert(
+                name && name !== 'none',
+                'Expected animationName on movable peg'
+            );
         });
         test('Disabled hint button style changes on loss', () => {
-            const a = api(); a.restartGame();
-            const loss = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            loss[0][3]=1; loss[6][3]=1; a.setBoard(loss,true); a.renderBoard(); a.evaluateBoard();
-            const btn = a.els.btnHint; if (!btn) return;
-            assert(btn.disabled,'Precondition: button should be disabled');
+            const a = api();
+            a.restartGame();
+            const loss = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            loss[0][3] = 1;
+            loss[6][3] = 1;
+            a.setBoard(loss, true);
+            a.renderBoard();
+            a.evaluateBoard();
+            const btn = a.els.btnHint;
+            if (!btn) return;
+            assert(btn.disabled, 'Precondition: button should be disabled');
             const cs = getComputedStyle(btn);
-            // Accept either reduced opacity or not-allowed cursor as visual disabled cue
-            const op = parseFloat(cs.opacity||'1');
-            assert(op < 1 || /not-allowed|default/.test(cs.cursor), 'Disabled hint button lacks visual change');
+            // Accept either reduced opacity or not-allowed cursor
+            // as visual disabled cue
+            const op = parseFloat(cs.opacity || '1');
+            assert(
+                op < 1 || /not-allowed|default/.test(cs.cursor),
+                'Disabled hint button lacks visual change'
+            );
         });
         test('Dock top applies data-dock="top"', () => {
-            const a = api(); a.applyDock('top');
-            assert(document.body.getAttribute('data-dock')==='top','Dock top not applied');
+            const a = api();
+            a.applyDock('top');
+            assert(
+                document.body.getAttribute('data-dock') === 'top',
+                'Dock top not applied'
+            );
             a.applyDock('bottom');
         });
         test('Dock right applies data-dock="right"', () => {
-            const a = api(); a.applyDock('right');
-            assert(document.body.getAttribute('data-dock')==='right','Dock right not applied');
+            const a = api();
+            a.applyDock('right');
+            assert(
+                document.body.getAttribute('data-dock') === 'right',
+                'Dock right not applied'
+            );
             a.applyDock('bottom');
         });
         test('Undo button disabled & visually distinct at start', () => {
-            const a = api(); a.restartGame();
-            const btn = a.els.btnUndo; if(!btn) return;
-            assert(btn.disabled,'Undo should start disabled');
+            const a = api();
+            a.restartGame();
+            const btn = a.els.btnUndo;
+            if (!btn) return;
+            assert(btn.disabled, 'Undo should start disabled');
             const cs = getComputedStyle(btn);
-            const op = parseFloat(cs.opacity||'1');
-            // Allow either reduced opacity or some grayscale filter or cursor default
-            assert(op < 1 || /not-allowed|default/.test(cs.cursor), 'Undo disabled lacks visual cue');
+            const op = parseFloat(cs.opacity || '1');
+            // Allow either reduced opacity or some grayscale filter or
+            // cursor default
+            assert(
+                op < 1 || /not-allowed|default/.test(cs.cursor),
+                'Undo disabled lacks visual cue'
+            );
         });
         test('Undo button enabled after first move', () => {
-            const a = api(); a.restartGame();
-            a.executeMove(3,5,3,3);
-            const btn = a.els.btnUndo; if(!btn) return;
-            assert(!btn.disabled,'Undo should enable after a move');
+            const a = api();
+            a.restartGame();
+            a.executeMove(3, 5, 3, 3);
+            const btn = a.els.btnUndo;
+            if (!btn) return;
+            assert(!btn.disabled, 'Undo should enable after a move');
         });
         test('Peg elements are circular (border-radius 50%)', () => {
-            const a = api(); a.restartGame();
+            const a = api();
+            a.restartGame();
             const peg = document.querySelector('.peg');
-            assert(peg,'No peg found');
+            assert(peg, 'No peg found');
             const br = getComputedStyle(peg).borderRadius.trim();
-            assert(/50%/.test(br) || /999/.test(br),'Peg borderRadius not circular');
+            assert(
+                /50%/.test(br) || /999/.test(br),
+                'Peg borderRadius not circular'
+            );
         });
         test('Movable peg animationDuration > 0s', () => {
-            const a = api(); a.restartGame();
+            const a = api();
+            a.restartGame();
             const peg = document.querySelector('.peg.movable-bounce');
-            if(!peg) return; // environment may not assign immediately
+            if (!peg) return; // may not assign immediately
             const dur = getComputedStyle(peg).animationDuration;
-            // animationDuration may be multiple comma-separated values; check any >0
-            const anyPos = dur.split(',').some(d=>/\d/.test(d) && parseFloat(d) > 0);
-            assert(anyPos,'Expected positive animation duration');
+            // animationDuration may be multiple comma-separated values;
+            // check any > 0
+            const anyPos = dur.split(',').some(d => (
+                /\d/.test(d) && parseFloat(d) > 0
+            ));
+            assert(anyPos, 'Expected positive animation duration');
         });
         test('Selecting a movable peg adds selected class', () => {
-            const a = api(); a.restartGame();
-            // Find a peg with at least one legal move (center arm typical: (3,5))
+            const a = api();
+            a.restartGame();
+            // Find a peg with at least one legal move (center arm
+            // typical: (3,5))
             let target = null;
-            for (let r=0;r<7 && !target;r++) {
-                for (let c=0;c<7 && !target;c++) {
-                    if (a.isLegalMove(r,c,r,c-2) || a.isLegalMove(r,c,r,c+2) || a.isLegalMove(r,c,r-2,c) || a.isLegalMove(r,c,r+2,c)) {
-                        target = document.querySelector(`.peg[data-r="${r}"][data-c="${c}"]`);
+            for (let r = 0; r < 7 && !target; r++) {
+                for (let c = 0; c < 7 && !target; c++) {
+                    if (
+                        a.isLegalMove(r, c, r, c - 2) ||
+                        a.isLegalMove(r, c, r, c + 2) ||
+                        a.isLegalMove(r, c, r - 2, c) ||
+                        a.isLegalMove(r, c, r + 2, c)
+                    ) {
+                        target = document.querySelector(
+                            `.peg[data-r="${r}"][data-c="${c}"]`
+                        );
                     }
                 }
             }
             const peg = target || document.querySelector('.peg');
-            assert(peg,'No movable peg found');
+            assert(peg, 'No movable peg found');
             peg.click();
-            assert(peg.classList.contains('selected'),'Selected class missing after click');
+            assert(
+                peg.classList.contains('selected'),
+                'Selected class missing after click'
+            );
         });
         test('Selected peg outline/visual emphasis present', () => {
             const peg = document.querySelector('.peg.selected');
-            if(!peg) return; // depends on prior test
+            if (!peg) return; // depends on prior test
             const cs = getComputedStyle(peg);
-            // Accept either box-shadow, outline, or transform scale as emphasis
-            const emphasized = (cs.outlineStyle && cs.outlineStyle !== 'none') ||
-                /box-shadow/i.test(peg.getAttribute('style')||'') ||
-                (cs.transform && cs.transform !== 'none');
-            assert(emphasized,'No visual emphasis detected for selected peg');
+            // Accept box-shadow, outline, or transform scale as emphasis
+            const emphasized = (
+                (cs.outlineStyle && cs.outlineStyle !== 'none') ||
+                /box-shadow/i.test(peg.getAttribute('style') || '') ||
+                (cs.transform && cs.transform !== 'none')
+            );
+            assert(
+                emphasized,
+                'No visual emphasis detected for selected peg'
+            );
         });
         test('Unmovable peg lacks movable-bounce class', () => {
-            const a = api(); a.restartGame();
+            const a = api();
+            a.restartGame();
             // Force a state with only two isolated pegs (both unmovable)
-            const iso = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            iso[0][3]=1; iso[6][3]=1; a.setBoard(iso,true); a.renderBoard(); a.evaluateBoard();
+            const iso = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            iso[0][3] = 1;
+            iso[6][3] = 1;
+            a.setBoard(iso, true);
+            a.renderBoard();
+            a.evaluateBoard();
             const movable = document.querySelector('.peg.movable-bounce');
-            assert(!movable,'Unexpected movable-bounce on isolated layout');
+            assert(
+                !movable,
+                'Unexpected movable-bounce on isolated layout'
+            );
             a.restartGame();
         });
-        test('Unreachable peg style has red-ish indicator (color check)', () => {
-            const a = api(); a.restartGame();
-            const iso = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            iso[0][3]=1; iso[6][3]=1; a.setBoard(iso,true); a.renderBoard();
-            a.analyzeSinglePegReachability(0,3);
-            const el = document.querySelector('.peg.unreachable');
-            if(!el) { a.restartGame(); return; }
-            const color = getComputedStyle(el).color;
-            // Expect some red component dominance
-            assert(/rgb\(/.test(color),'Color not rgb');
-            const nums = color.match(/\d+/g).map(n=>parseInt(n,10));
-            if(nums.length>=3){ assert(nums[0] >= nums[1] && nums[0] >= nums[2],'Red component not dominant'); }
-            a.restartGame();
-        });
+        test(
+            'Unreachable peg style has red-ish indicator (color check)',
+            () => {
+                const a = api();
+                a.restartGame();
+                const iso = a.getBoard().map(r => r.map(
+                    c => c === -1 ? -1 : 0
+                ));
+                iso[0][3] = 1;
+                iso[6][3] = 1;
+                a.setBoard(iso, true);
+                a.renderBoard();
+                a.analyzeSinglePegReachability(0, 3);
+                const el = document.querySelector('.peg.unreachable');
+                if (!el) {
+                    a.restartGame();
+                    return;
+                }
+                const color = getComputedStyle(el).color;
+                // Expect some red component dominance
+                assert(/rgb\(/.test(color), 'Color not rgb');
+                const nums = color.match(/\d+/g).map(n => parseInt(n, 10));
+                if (nums.length >= 3) {
+                    assert(
+                        nums[0] >= nums[1] && nums[0] >= nums[2],
+                        'Red component not dominant'
+                    );
+                }
+                a.restartGame();
+            }
+        );
         test('Victory final peg gets golden styling', () => {
-            const a = api(); a.restartGame();
-            const win = a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); win[3][3]=1;
-            a.setBoard(win,true); a.renderBoard(); a.evaluateBoard();
+            const a = api();
+            a.restartGame();
+            const win = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            win[3][3] = 1;
+            a.setBoard(win, true);
+            a.renderBoard();
+            a.evaluateBoard();
             const peg = document.querySelector('.peg');
-            assert(peg,'No final peg element');
+            assert(peg, 'No final peg element');
             const cs = getComputedStyle(peg);
-            // Accept either golden/yellow fill or glow (box-shadow / filter)
-            const golden = /rgb\(/.test(cs.backgroundColor) || /box-shadow/i.test(peg.getAttribute('style')||'');
-            assert(golden,'Final peg not styled golden');
+            // Accept golden/yellow fill or glow (box-shadow / filter)
+            const golden = (
+                /rgb\(/.test(cs.backgroundColor) ||
+                /box-shadow/i.test(peg.getAttribute('style') || '')
+            );
+            assert(golden, 'Final peg not styled golden');
             a.restartGame();
         });
         test('Loss disables undo button visually', () => {
-            const a = api(); a.restartGame();
-            const loss = a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); loss[0][3]=1; loss[6][3]=1;
-            a.setBoard(loss,true); a.renderBoard(); a.evaluateBoard();
-            const btn = a.els.btnUndo; if(!btn) return;
-            assert(btn.disabled,'Undo should be disabled');
-            const cs = getComputedStyle(btn); const op = parseFloat(cs.opacity||'1');
-            assert(op < 1 || /not-allowed|default/.test(cs.cursor),'Undo disabled missing visual cue');
+            const a = api();
+            a.restartGame();
+            const loss = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            loss[0][3] = 1;
+            loss[6][3] = 1;
+            a.setBoard(loss, true);
+            a.renderBoard();
+            a.evaluateBoard();
+            const btn = a.els.btnUndo;
+            if (!btn) return;
+            assert(btn.disabled, 'Undo should be disabled');
+            const cs = getComputedStyle(btn);
+            const op = parseFloat(cs.opacity || '1');
+            assert(
+                op < 1 || /not-allowed|default/.test(cs.cursor),
+                'Undo disabled missing visual cue'
+            );
         });
         test('Confetti canvas (if any) appears on victory', () => {
-            const a = api(); a.restartGame();
-            const win = a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); win[3][3]=1;
-            a.setBoard(win,true); a.renderBoard(); a.evaluateBoard();
-            // Look for a canvas or container inserted by triggerWinEffects (best-effort)
+            const a = api();
+            a.restartGame();
+            const win = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            win[3][3] = 1;
+            a.setBoard(win, true);
+            a.renderBoard();
+            a.evaluateBoard();
+            // Look for a canvas or container inserted by
+            // triggerWinEffects (best-effort)
             const canvas = document.querySelector('canvas');
-            assert(canvas,'Expected a canvas element for effects');
+            assert(canvas, 'Expected a canvas element for effects');
             a.restartGame();
         });
         test('Hint target cell receives hint-target class', () => {
-            const a = api(); a.restartGame();
+            const a = api();
+            a.restartGame();
             a.showHint();
-            if(a.state().currentHintMove){
+            if (a.state().currentHintMove) {
                 const target = document.querySelector('.hint-target');
-                assert(target,'No hint-target element');
+                assert(target, 'No hint-target element');
                 a.clearHint();
             }
         });
         // ---------------- Accessibility / Contrast CSS TESTS ----------
-        function parseRgb(str){
-            const m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i); if(!m) return [0,0,0];
-            return [parseInt(m[1],10),parseInt(m[2],10),parseInt(m[3],10)];
+        function parseRgb (str) {
+            const m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+            if (!m) return [0, 0, 0];
+            return [
+                parseInt(m[1], 10),
+                parseInt(m[2], 10),
+                parseInt(m[3], 10)
+            ];
         }
-        function relLum([r,g,b]){
-            const f = v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); };
-            const R=f(r),G=f(g),B=f(b); return 0.2126*R+0.7152*G+0.0722*B;
+        function relLum ([r, g, b]) {
+            const f = v => {
+                v /= 255;
+                return v <= 0.03928
+                    ? v / 12.92
+                    : Math.pow((v + 0.055) / 1.055, 2.4);
+            };
+            const R = f(r), G = f(g), B = f(b);
+            return 0.2126 * R + 0.7152 * G + 0.0722 * B;
         }
-        function contrast(c1,c2){
-            const L1=relLum(c1),L2=relLum(c2); const hi=Math.max(L1,L2), lo=Math.min(L1,L2); return (hi+0.05)/(lo+0.05);
+        function contrast (c1, c2) {
+            const L1 = relLum(c1), L2 = relLum(c2);
+            const hi = Math.max(L1, L2), lo = Math.min(L1, L2);
+            return (hi + 0.05) / (lo + 0.05);
         }
-        function effectiveBg(el){
-            let cur=el;
-            // Skip self for pegs to compare their (foreground) fill vs board/body background
-            if (cur.classList && cur.classList.contains('peg')) cur = cur.parentElement;
-            while(cur){
-                const cs=getComputedStyle(cur); if(cs.backgroundColor && cs.backgroundColor!=='rgba(0, 0, 0, 0)' && cs.backgroundColor!=='transparent') return cs.backgroundColor;
-                cur=cur.parentElement;
+        function effectiveBg (el) {
+            let cur = el;
+            // Skip self for pegs to compare their (foreground) fill vs
+            // board/body background
+            if (cur.classList && cur.classList.contains('peg')) {
+                cur = cur.parentElement;
+            }
+            while (cur) {
+                const cs = getComputedStyle(cur);
+                if (
+                    cs.backgroundColor &&
+                    cs.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+                    cs.backgroundColor !== 'transparent'
+                ) {
+                    return cs.backgroundColor;
+                }
+                cur = cur.parentElement;
             }
             return getComputedStyle(document.body).backgroundColor;
         }
         test('Prediction label contrast ratio >= 4.0', () => {
-            const a=api(); a.restartGame(); a.evaluateBoard();
-            const el=a.els.elPrediction; const fg=parseRgb(getComputedStyle(el).color); const bg=parseRgb(effectiveBg(el));
-            const ratio=contrast(fg,bg); assert(ratio>=4.0,'Prediction contrast '+ratio.toFixed(2)+' < 4.0');
+            const a = api();
+            a.restartGame();
+            a.evaluateBoard();
+            const el = a.els.elPrediction;
+            const fg = parseRgb(getComputedStyle(el).color);
+            const bg = parseRgb(effectiveBg(el));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 4.0,
+                'Prediction contrast ' + ratio.toFixed(2) + ' < 4.0'
+            );
         });
         test('Status message contrast ratio >= 4.0', () => {
-            const a=api(); a.restartGame();
-            const el=a.els.elStatus; const fg=parseRgb(getComputedStyle(el).color); const bg=parseRgb(effectiveBg(el));
-            const ratio=contrast(fg,bg); assert(ratio>=4.0,'Status contrast '+ratio.toFixed(2)+' < 4.0');
+            const a = api();
+            a.restartGame();
+            const el = a.els.elStatus;
+            const fg = parseRgb(getComputedStyle(el).color);
+            const bg = parseRgb(effectiveBg(el));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 4.0,
+                'Status contrast ' + ratio.toFixed(2) + ' < 4.0'
+            );
         });
         test('Primary button text contrast ratio >= 3.0', () => {
-            const btn=document.querySelector('button'); if(!btn) return;
-            const cs=getComputedStyle(btn); const fg=parseRgb(cs.color); const bg=parseRgb(effectiveBg(btn));
-            const ratio=contrast(fg,bg); assert(ratio>=3.0,'Button contrast '+ratio.toFixed(2)+' < 3.0');
+            const btn = document.querySelector('button');
+            if (!btn) return;
+            const cs = getComputedStyle(btn);
+            const fg = parseRgb(cs.color);
+            const bg = parseRgb(effectiveBg(btn));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 3.0,
+                'Button contrast ' + ratio.toFixed(2) + ' < 3.0'
+            );
         });
-        test('Victory peg contrast vs board background >= 3.0 (conditional)', () => {
-            const a=api(); a.restartGame();
-            const win=a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); win[3][3]=1; a.setBoard(win,true); a.renderBoard(); a.evaluateBoard();
-            const peg=document.querySelector('.peg'); if(!peg) { a.restartGame(); return; }
-            const pegCol=parseRgb(getComputedStyle(peg).backgroundColor); const boardBg=parseRgb(getComputedStyle(document.body).backgroundColor);
-            const ratio=contrast(pegCol,boardBg); assert(ratio>=3.0,'Victory peg contrast '+ratio.toFixed(2)+' < 3.0'); a.restartGame();
-        });
+        test(
+            'Victory peg contrast vs board background >= 3.0 (conditional)',
+            () => {
+                const a = api();
+                a.restartGame();
+                const win = a.getBoard().map(r => r.map(
+                    c => c === -1 ? -1 : 0
+                ));
+                win[3][3] = 1;
+                a.setBoard(win, true);
+                a.renderBoard();
+                a.evaluateBoard();
+                const peg = document.querySelector('.peg');
+                if (!peg) {
+                    a.restartGame();
+                    return;
+                }
+                const pegCol = parseRgb(
+                    getComputedStyle(peg).backgroundColor
+                );
+                const boardBg = parseRgb(
+                    getComputedStyle(document.body).backgroundColor
+                );
+                const ratio = contrast(pegCol, boardBg);
+                assert(
+                    ratio >= 3.0,
+                    'Victory peg contrast ' + ratio.toFixed(2) + ' < 3.0'
+                );
+                a.restartGame();
+            }
+        );
         test('Disabled hint button visual contrast change vs enabled', () => {
-            const a=api(); a.restartGame(); const btn=a.els.btnHint; if(!btn) return;
-            const enabledCol=getComputedStyle(btn).color;
+            const a = api();
+            a.restartGame();
+            const btn = a.els.btnHint;
+            if (!btn) return;
+            const enabledCol = getComputedStyle(btn).color;
             // Create loss state
-            const loss=a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); loss[0][3]=1; loss[6][3]=1; a.setBoard(loss,true); a.renderBoard(); a.evaluateBoard();
-            const disabledCol=getComputedStyle(btn).color;
-            if(enabledCol===disabledCol){ // fallback to opacity diff
-                const op1=parseFloat(getComputedStyle(btn).opacity||'1');
-                assert(op1<1 || btn.disabled,'Disabled hint button not visually distinct');
+            const loss = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            loss[0][3] = 1;
+            loss[6][3] = 1;
+            a.setBoard(loss, true);
+            a.renderBoard();
+            a.evaluateBoard();
+            const disabledCol = getComputedStyle(btn).color;
+            if (enabledCol === disabledCol) { // fallback to opacity diff
+                const op1 = parseFloat(
+                    getComputedStyle(btn).opacity || '1'
+                );
+                assert(
+                    op1 < 1 || btn.disabled,
+                    'Disabled hint button not visually distinct'
+                );
             }
             a.restartGame();
         });
         test('Base body font size >= 12px', () => {
-            const fs=parseFloat(getComputedStyle(document.body).fontSize);
-            assert(fs>=12,'Base font size '+fs+' < 12px');
+            const fs = parseFloat(
+                getComputedStyle(document.body).fontSize
+            );
+            assert(fs >= 12, 'Base font size ' + fs + ' < 12px');
         });
         test('Prefers-reduced-motion detection (informational)', () => {
-            const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-            // Informational: always pass; log state in panel via status element color tweak
-            // (No assertion dependent on environment to avoid flakiness)
-            assert(true,'prefers-reduced-motion state: '+reduce);
+            const reduce = matchMedia(
+                '(prefers-reduced-motion: reduce)'
+            ).matches;
+            // Informational: always pass; log state via status element
+            assert(true, 'prefers-reduced-motion state: ' + reduce);
         });
         test('Unreachable peg red contrast ratio >= 3.0 (conditional)', () => {
-            const a=api(); a.restartGame();
-            const iso=a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); iso[0][3]=1; iso[6][3]=1; a.setBoard(iso,true); a.renderBoard();
-            a.analyzeSinglePegReachability(0,3);
-            const el=document.querySelector('.peg.unreachable'); if(!el){ a.restartGame(); return; }
-            const fg=parseRgb(getComputedStyle(el).color); const bg=parseRgb(effectiveBg(el));
-            const ratio=contrast(fg,bg); assert(ratio>=3.0,'Unreachable peg text contrast '+ratio.toFixed(2)+' < 3.0'); a.restartGame();
+            const a = api();
+            a.restartGame();
+            const iso = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            iso[0][3] = 1;
+            iso[6][3] = 1;
+            a.setBoard(iso, true);
+            a.renderBoard();
+            a.analyzeSinglePegReachability(0, 3);
+            const el = document.querySelector('.peg.unreachable');
+            if (!el) {
+                a.restartGame();
+                return;
+            }
+            const fg = parseRgb(getComputedStyle(el).color);
+            const bg = parseRgb(effectiveBg(el));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 3.0,
+                'Unreachable peg text contrast ' +
+                    ratio.toFixed(2) + ' < 3.0'
+            );
+            a.restartGame();
         });
         test('Prediction label AAA contrast ratio >= 7.0', () => {
-            const a=api(); a.restartGame(); a.evaluateBoard();
-            const el=a.els.elPrediction; const fg=parseRgb(getComputedStyle(el).color); const bg=parseRgb(effectiveBg(el));
-            const ratio=contrast(fg,bg); assert(ratio>=7.0,'Prediction AAA contrast '+ratio.toFixed(2)+' < 7.0');
+            const a = api();
+            a.restartGame();
+            a.evaluateBoard();
+            const el = a.els.elPrediction;
+            const fg = parseRgb(getComputedStyle(el).color);
+            const bg = parseRgb(effectiveBg(el));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 7.0,
+                'Prediction AAA contrast ' + ratio.toFixed(2) + ' < 7.0'
+            );
         });
         test('Status message AAA contrast ratio >= 7.0', () => {
-            const a=api(); a.restartGame();
-            const el=a.els.elStatus; const fg=parseRgb(getComputedStyle(el).color); const bg=parseRgb(effectiveBg(el));
-            const ratio=contrast(fg,bg); assert(ratio>=7.0,'Status AAA contrast '+ratio.toFixed(2)+' < 7.0');
+            const a = api();
+            a.restartGame();
+            const el = a.els.elStatus;
+            const fg = parseRgb(getComputedStyle(el).color);
+            const bg = parseRgb(effectiveBg(el));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 7.0,
+                'Status AAA contrast ' + ratio.toFixed(2) + ' < 7.0'
+            );
         });
         test('Primary button text contrast ratio >= 4.5 (AA)', () => {
-            const btn=document.querySelector('button'); if(!btn) return;
-            const cs=getComputedStyle(btn); const fg=parseRgb(cs.color); const bg=parseRgb(effectiveBg(btn));
-            const ratio=contrast(fg,bg); assert(ratio>=4.5,'Button AA contrast '+ratio.toFixed(2)+' < 4.5');
+            const btn = document.querySelector('button');
+            if (!btn) return;
+            const cs = getComputedStyle(btn);
+            const fg = parseRgb(cs.color);
+            const bg = parseRgb(effectiveBg(btn));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 4.5,
+                'Button AA contrast ' + ratio.toFixed(2) + ' < 4.5'
+            );
         });
         test('Reduced motion simulation removes animations', () => {
-            const a=api(); a.restartGame(); a.enableReducedMotion(true);
-            const animEl=document.querySelector('.peg.movable-bounce'); if(animEl){
-                const cs=getComputedStyle(animEl);
-                assert(cs.animationName==='none' || cs.animationDuration==='0s','Animation not disabled under reduced motion');
+            const a = api();
+            a.restartGame();
+            a.enableReducedMotion(true);
+            const animEl = document.querySelector('.peg.movable-bounce');
+            if (animEl) {
+                const cs = getComputedStyle(animEl);
+                assert(
+                    cs.animationName === 'none' ||
+                        cs.animationDuration === '0s',
+                    'Animation not disabled under reduced motion'
+                );
             }
             a.enableReducedMotion(false);
         });
         test('Reduced motion simulation preserves layout width', () => {
-            const a=api(); a.restartGame();
-            const board=a.els.elBoard; const wBefore=board.getBoundingClientRect().width;
+            const a = api();
+            a.restartGame();
+            const board = a.els.elBoard;
+            const wBefore = board.getBoundingClientRect().width;
             a.enableReducedMotion(true);
-            const wAfter=board.getBoundingClientRect().width;
-            assert(Math.abs(wBefore-wAfter) < 1,'Layout width changed under reduced motion');
+            const wAfter = board.getBoundingClientRect().width;
+            assert(
+                Math.abs(wBefore - wAfter) < 1,
+                'Layout width changed under reduced motion'
+            );
             a.enableReducedMotion(false);
         });
         test('Victory peg AAA contrast >= 7.0', () => {
-            const a=api(); a.restartGame();
-            const win=a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); win[3][3]=1; a.setBoard(win,true); a.renderBoard(); a.evaluateBoard();
-            const peg=document.querySelector('.peg'); if(!peg){ a.restartGame(); return; }
-            const fg=parseRgb(getComputedStyle(peg).backgroundColor); const bg=parseRgb(effectiveBg(peg));
-            let ratio=contrast(fg,bg);
-            if (ratio < 7.0) {
-                // Attempt inline brightening fallback for test environment variance
-                peg.style.backgroundColor = '#ffef33';
-                const fg2=parseRgb(getComputedStyle(peg).backgroundColor);
-                ratio=contrast(fg2,bg);
-            }
-            assert(ratio>=7.0,'Victory peg AAA contrast '+ratio.toFixed(2)+' < 7.0'); a.restartGame();
-        });
-        test('Unreachable peg red contrast ratio >= 4.5 (AA)', () => {
-            const a=api(); a.restartGame();
-            const iso=a.getBoard().map(r=>r.map(c=>c===-1?-1:0)); iso[0][3]=1; iso[6][3]=1; a.setBoard(iso,true); a.renderBoard();
-            a.analyzeSinglePegReachability(0,3); const el=document.querySelector('.peg.unreachable'); if(!el){ a.restartGame(); return; }
-            const fg=parseRgb(getComputedStyle(el).color); const bg=parseRgb(effectiveBg(el)); const ratio=contrast(fg,bg);
-            assert(ratio>=4.5,'Unreachable peg AA contrast '+ratio.toFixed(2)+' < 4.5'); a.restartGame();
-        });
-        test('Reduced motion toggle off restores animations', () => {
-            const a=api(); a.restartGame();
-            a.enableReducedMotion(true); a.enableReducedMotion(false);
-            const el=document.querySelector('.peg.movable-bounce'); if(!el) return;
-            const cs=getComputedStyle(el);
-            assert(!(cs.animationName==='none' && cs.animationDuration==='0s'),'Animation did not restore after disabling reduced motion');
-        });
-        test('setBoard(skip=true) updates board without auto evaluation', () => {
             const a = api();
             a.restartGame();
-            const winBoard = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            winBoard[3][3] = 1; // winning configuration
-            a.setBoard(winBoard, true); // skip evaluation/render
-            assertEq(a.countPegs(),1,'Board state not applied with skip=true');
-            assert(!a.state().gameEnded,'Game should not auto-end without evaluateBoard');
+            const win = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            win[3][3] = 1;
+            a.setBoard(win, true);
+            a.renderBoard();
             a.evaluateBoard();
-            assert(a.state().gameEnded,'Evaluation should detect win');
+            const peg = document.querySelector('.peg');
+            if (!peg) {
+                a.restartGame();
+                return;
+            }
+            const fg = parseRgb(getComputedStyle(peg).backgroundColor);
+            const bg = parseRgb(effectiveBg(peg));
+            let ratio = contrast(fg, bg);
+            if (ratio < 7.0) {
+                // Attempt inline brightening fallback for variance
+                peg.style.backgroundColor = '#ffef33';
+                const fg2 = parseRgb(
+                    getComputedStyle(peg).backgroundColor
+                );
+                ratio = contrast(fg2, bg);
+            }
+            assert(
+                ratio >= 7.0,
+                'Victory peg AAA contrast ' + ratio.toFixed(2) + ' < 7.0'
+            );
             a.restartGame();
         });
+        test('Unreachable peg red contrast ratio >= 4.5 (AA)', () => {
+            const a = api();
+            a.restartGame();
+            const iso = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            iso[0][3] = 1;
+            iso[6][3] = 1;
+            a.setBoard(iso, true);
+            a.renderBoard();
+            a.analyzeSinglePegReachability(0, 3);
+            const el = document.querySelector('.peg.unreachable');
+            if (!el) {
+                a.restartGame();
+                return;
+            }
+            const fg = parseRgb(getComputedStyle(el).color);
+            const bg = parseRgb(effectiveBg(el));
+            const ratio = contrast(fg, bg);
+            assert(
+                ratio >= 4.5,
+                'Unreachable peg AA contrast ' +
+                    ratio.toFixed(2) + ' < 4.5'
+            );
+            a.restartGame();
+        });
+        test('Reduced motion toggle off restores animations', () => {
+            const a = api();
+            a.restartGame();
+            a.enableReducedMotion(true);
+            a.enableReducedMotion(false);
+            const el = document.querySelector('.peg.movable-bounce');
+            if (!el) return;
+            const cs = getComputedStyle(el);
+            assert(
+                !(cs.animationName === 'none' &&
+                    cs.animationDuration === '0s'),
+                'Animation did not restore after disabling reduced motion'
+            );
+        });
+        test(
+            'setBoard(skip=true) updates board without auto evaluation',
+            () => {
+                const a = api();
+                a.restartGame();
+                const winBoard = a.getBoard().map(r => r.map(
+                    c => c === -1 ? -1 : 0
+                ));
+                winBoard[3][3] = 1; // winning configuration
+                a.setBoard(winBoard, true); // skip evaluation/render
+                assertEq(
+                    a.countPegs(),
+                    1,
+                    'Board state not applied with skip=true'
+                );
+                assert(
+                    !a.state().gameEnded,
+                    'Game should not auto-end without evaluateBoard'
+                );
+                a.evaluateBoard();
+                assert(
+                    a.state().gameEnded,
+                    'Evaluation should detect win'
+                );
+                a.restartGame();
+            }
+        );
         test('getCoordIndex returns -1 for invalid cells', () => {
             const a = api();
             a.restartGame();
@@ -4210,33 +4689,47 @@
             const a = api();
             a.restartGame();
             const moves = a.generateMoves(a.getBoard());
-            const sources = new Set(moves.map(m=>m.sr+','+m.sc));
+            const sources = new Set(moves.map(m => m.sr + ',' + m.sc));
             const movable = a.getMovablePegCount();
-            assertEq(movable, sources.size, 'Movable peg count mismatch');
+            assertEq(
+                movable,
+                sources.size,
+                'Movable peg count mismatch'
+            );
         });
         test('boardToBitMask changes after executing a move', () => {
             const a = api();
             a.restartGame();
             const before = a.boardToBitMask();
             // Known legal opening move (3,5 -> 3,3)
-            a.executeMove(3,5,3,3);
+            a.executeMove(3, 5, 3, 3);
             const after = a.boardToBitMask();
-            assert(before !== after, 'Bitmask should change after move');
+            assert(
+                before !== after,
+                'Bitmask should change after move'
+            );
             a.restartGame();
         });
         test('Victory history entry records hint flag when hint used', () => {
             const a = api();
             a.restartGame();
             a.showHint(); // set hintUsedThisGame if possible
-            const winBoard = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            winBoard[3][3]=1; a.setBoard(winBoard,true); a.renderBoard();
+            const winBoard = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            winBoard[3][3] = 1;
+            a.setBoard(winBoard, true);
+            a.renderBoard();
             a.evaluateBoard();
             const entry = a.loadHistory()[0];
             if (entry) {
-                assert(entry.win===true,'Expected win entry');
-                // If hint move existed earlier, flag should be true; allow either if no hint found.
+                assert(entry.win === true, 'Expected win entry');
+                // If hint existed earlier, flag should be true.
                 if (a.state().hintUsedThisGame) {
-                    assert(entry.hint===true,'Hint flag not persisted in history');
+                    assert(
+                        entry.hint === true,
+                        'Hint flag not persisted in history'
+                    );
                 }
             }
             a.restartGame();
@@ -4244,12 +4737,19 @@
         test('scheduleWinPathCount post-victory shows done text', () => {
             const a = api();
             a.restartGame();
-            const winBoard = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            winBoard[3][3]=1; a.setBoard(winBoard,true); a.renderBoard();
+            const winBoard = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            winBoard[3][3] = 1;
+            a.setBoard(winBoard, true);
+            a.renderBoard();
             a.evaluateBoard();
             a.scheduleWinPathCount();
             const txt = a.els.elWinPaths.textContent.toLowerCase();
-            assert(/done/.test(txt),'Win paths label should show done state');
+            assert(
+                /done/.test(txt),
+                'Win paths label should show done state'
+            );
             a.restartGame();
         });
         test('installAudioSpy idempotent (same log object)', () => {
@@ -4257,20 +4757,32 @@
             a.restartGame();
             const first = a.installAudioSpy();
             const second = a.installAudioSpy();
-            assert(first.installed && second.installed,'Spy not installed');
-            assert(first.log === second.log,'Expected same log object for idempotent install');
+            assert(
+                first.installed && second.installed,
+                'Spy not installed'
+            );
+            assert(
+                first.log === second.log,
+                'Expected same log object for idempotent install'
+            );
         });
         test('getPredictionLabel within allowed set', () => {
             const a = api();
             a.restartGame();
             const lbl = a.getPredictionLabel();
-            assert(['Good','Uncertain','Poor'].includes(lbl),'Unexpected prediction label: '+lbl);
+            assert(
+                ['Good', 'Uncertain', 'Poor'].includes(lbl),
+                'Unexpected prediction label: ' + lbl
+            );
         });
         test('Executing moves without hint leaves hint flag false', () => {
             const a = api();
             a.restartGame();
-            a.executeMove(3,5,3,3); // legal
-            assert(!a.state().hintUsedThisGame,'Hint flag incorrectly set');
+            a.executeMove(3, 5, 3, 3); // legal
+            assert(
+                !a.state().hintUsedThisGame,
+                'Hint flag incorrectly set'
+            );
             a.restartGame();
         });
         test('Remaining counter UI updates after a move', () => {
@@ -4278,33 +4790,61 @@
             a.restartGame();
             const elRem = document.getElementById('remaining');
             const beforeLogical = a.countPegs();
-            const beforeUI = parseInt(elRem.textContent,10);
-            assert(beforeUI === beforeLogical,'Precondition mismatch remaining UI');
-            a.executeMove(3,5,3,3);
+            const beforeUI = parseInt(elRem.textContent, 10);
+            assert(
+                beforeUI === beforeLogical,
+                'Precondition mismatch remaining UI'
+            );
+            a.executeMove(3, 5, 3, 3);
             const afterLogical = a.countPegs();
-            const afterUI = parseInt(elRem.textContent,10);
-            assert(afterLogical === beforeLogical-1,'Logical remaining did not decrement');
-            assert(afterUI === afterLogical,'UI remaining counter not updated');
+            const afterUI = parseInt(elRem.textContent, 10);
+            assert(
+                afterLogical === beforeLogical - 1,
+                'Logical remaining did not decrement'
+            );
+            assert(
+                afterUI === afterLogical,
+                'UI remaining counter not updated'
+            );
             a.restartGame();
         });
         test('Loss disables hint & undo buttons', () => {
             const a = api();
             a.restartGame();
-            const lossBoard = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            lossBoard[0][3]=1; lossBoard[6][3]=1;
-            a.setBoard(lossBoard,true); a.renderBoard(); a.evaluateBoard();
-            assert(a.els.btnHint.disabled,'Hint button should be disabled on loss');
-            assert(a.state().gameEnded,'Game should be ended');
+            const lossBoard = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            lossBoard[0][3] = 1;
+            lossBoard[6][3] = 1;
+            a.setBoard(lossBoard, true);
+            a.renderBoard();
+            a.evaluateBoard();
+            assert(
+                a.els.btnHint.disabled,
+                'Hint button should be disabled on loss'
+            );
+            assert(a.state().gameEnded, 'Game should be ended');
         });
         test('restartGame re-enables hint button after loss', () => {
             const a = api();
             a.restartGame();
-            const lossBoard = a.getBoard().map(r=>r.map(c=>c===-1?-1:0));
-            lossBoard[0][3]=1; lossBoard[6][3]=1;
-            a.setBoard(lossBoard,true); a.renderBoard(); a.evaluateBoard();
-            assert(a.els.btnHint.disabled,'Precondition: button disabled');
+            const lossBoard = a.getBoard().map(r => r.map(
+                c => c === -1 ? -1 : 0
+            ));
+            lossBoard[0][3] = 1;
+            lossBoard[6][3] = 1;
+            a.setBoard(lossBoard, true);
+            a.renderBoard();
+            a.evaluateBoard();
+            assert(
+                a.els.btnHint.disabled,
+                'Precondition: button disabled'
+            );
             a.restartGame();
-            assert(!a.els.btnHint.disabled,'Hint button not re-enabled after restart');
+            assert(
+                !a.els.btnHint.disabled,
+                'Hint button not re-enabled after restart'
+            );
         });
         // Runner ---------------------------------------------------------
         let __running = false;
@@ -4348,8 +4888,8 @@
                 }
             }
             const dur = (performance.now() - start).toFixed(1);
-            logLine('<span class="t-summary">DONE in ' + dur + 'ms  Passed:' +
-                pass + '  Failed:' + fail + '</span>');
+            logLine('<span class="t-summary">DONE in ' + dur +
+                'ms  Passed:' + pass + '  Failed:' + fail + '</span>');
             logLine('<span class="t-muted">Test Index:</span>');
             tests.forEach(t => logLine(
                 '<span class="t-muted">  ' + t._num + '. ' + t.name +
