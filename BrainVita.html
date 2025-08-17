@@ -2344,6 +2344,10 @@
             const movable   = parseInt(elMovable.textContent, 10) || 0;
             const isolated  = countIsolatedPegs();
             const center    = boardMatrix[3][3] === 1;
+            // Ensure Remaining UI counter stays in sync
+            if (elRemaining && elRemaining.textContent !== String(remaining)) {
+                elRemaining.textContent = String(remaining);
+            }
 
             let score = 100;
             score -= (remaining - 1) * 2;
@@ -2937,7 +2941,7 @@
                  - Summary includes pass/fail counts, coverage %, uncalled API
                      functions, and average timings (ms) for hot paths.
 
-                 TEST LIST (Current: 120)
+                 TEST LIST (Current: 121)
                     1. API exposed
                     2. Initial board has 32 pegs and center empty
                     3. Legal move detection (3,5 -> 3,3)
@@ -3019,6 +3023,7 @@
                     79. Loss disables hint & undo buttons
                     80. restartGame re-enables hint button after loss
                     81-120. (CSS layout, accessibility, contrast, reduced motion)
+                    121. Remaining counter UI updates after a move
 
                  MICRO BENCHMARKS (reported post-run)
                          - renderBoard
@@ -4266,6 +4271,20 @@
             a.restartGame();
             a.executeMove(3,5,3,3); // legal
             assert(!a.state().hintUsedThisGame,'Hint flag incorrectly set');
+            a.restartGame();
+        });
+        test('Remaining counter UI updates after a move', () => {
+            const a = api();
+            a.restartGame();
+            const elRem = document.getElementById('remaining');
+            const beforeLogical = a.countPegs();
+            const beforeUI = parseInt(elRem.textContent,10);
+            assert(beforeUI === beforeLogical,'Precondition mismatch remaining UI');
+            a.executeMove(3,5,3,3);
+            const afterLogical = a.countPegs();
+            const afterUI = parseInt(elRem.textContent,10);
+            assert(afterLogical === beforeLogical-1,'Logical remaining did not decrement');
+            assert(afterUI === afterLogical,'UI remaining counter not updated');
             a.restartGame();
         });
         test('Loss disables hint & undo buttons', () => {
