@@ -1,6 +1,6 @@
 <!-- ====================================================================
 	N-Bob Pendulum - Prabhu & GPT 5.2
-	Version: 1.3
+	Version: 1.4
 
 	What this file is
 	- A self-contained HTML/CSS/JS canvas simulation of an N-bob pendulum
@@ -14,13 +14,19 @@
 	- Drag any bob to set its angle (relative to its parent joint). Release
 	  to let it swing.
 	- Click empty space to "nudge" the system with a small impulse.
+	- You can click slightly near a bob (not only exactly on it).
 	- Use Inputs -> Bobs to change the number of bobs.
 	- Use Inputs -> Sizes to override the visual radius of each bob (px),
 	  e.g. "20, 30, 10".
 	  - You can also use "auto" or "-" in a position to revert that bob
 	    to automatic sizing.
+	- Use Inputs -> Lengths to override each rod length (px),
+	  e.g. "auto" or "260, 220, 200".
+	  - Use "auto" or "-" per entry to revert that segment to automatic.
+	- Press Enter in any Inputs field to apply.
 	- Optional: add ?tests=1 to the URL to show a Tests panel and run the
 	  embedded unit tests (no external runner required).
+	  - Tests show numbered PASS/FAIL output and simple function coverage.
 
 	High-level architecture
 	- State: angles (theta[]) and angular velocities (omega[]) per bob.
@@ -32,13 +38,14 @@
 	  - Integrates the ODE using RK4 (Runge-Kutta 4) with sub-stepping.
 	- Rendering:
 	  - Canvas is full-viewport; each frame draws vignette, trails, rods,
-	    and bobs.
+	    ground shadows, and bobs.
 	  - Trails are stored as per-bob point buffers.
 	- UI:
-	  - Two separate minimizable panels (Inputs and Stats), both collapsed
-	    by default.
-	  - Stats shows a table for every bob: angle, angular velocity, position,
-	    and speed.
+	  - Three minimizable panels (Inputs, Stats, Tests).
+	  - Panels use +/− toggles and overlay the pendulum area (opening a
+	    panel does not resize the canvas).
+	  - Stats shows a table for every bob: measured period/frequency (from
+	    recent oscillations), angle, angular velocity, and speed.
 
 	Notes / tradeoffs
 	- This is a visualization-oriented simulation ("looks/feels" realistic)
@@ -87,7 +94,7 @@
 			.wrap {
 				position: fixed;
 				inset: 0;
-				padding: 10px;
+				padding: 10px 10px 28px;
 			}
 
 			canvas {
@@ -95,11 +102,7 @@
 				height: 100%;
 				display: block;
 				border-radius: 18px;
-				background: linear-gradient(
-					180deg,
-					rgba(255, 255, 255, 0.04),
-					rgba(255, 255, 255, 0.015)
-				);
+				background: transparent;
 				box-shadow:
 					0 0 0 1px rgba(255, 255, 255, 0.06),
 					0 18px 60px rgba(0, 0, 0, 0.55);
@@ -110,29 +113,69 @@
 			.hint {
 				position: fixed;
 				left: 50%;
-				bottom: 12px;
+				top: 10px;
 				transform: translateX(-50%);
-				font-size: 13px;
+				font-size: 11px;
 				color: rgba(255, 255, 255, 0.65);
 				user-select: none;
 				pointer-events: none;
 				text-align: center;
-				padding: 8px 12px;
+				padding: 6px 10px;
 				border-radius: 999px;
 				background: rgba(0, 0, 0, 0.25);
 				backdrop-filter: blur(10px);
 			}
 
-			/* HUD stack: top-left panels; canvas interaction still works. */
-			.hud {
+			/* Bottom-left footer label. */
+			#copyright {
 				position: fixed;
-				top: 12px;
 				left: 12px;
+				bottom: 6px;
+				font-size: 11px;
+				color: rgba(255, 255, 255, 0.45);
+				user-select: none;
+				pointer-events: none;
+			}
+
+			/* HUD stacks: panels; canvas interaction still works. */
+			.hud-left,
+			.hud-right {
+				position: fixed;
+				bottom: 28px;
 				display: flex;
 				flex-direction: column;
 				gap: 10px;
-				max-width: min(420px, calc(100vw - 24px));
+				max-width: min(420px, calc(50vw - 18px));
 				pointer-events: none;
+			}
+
+			.hud-left {
+				left: 12px;
+			}
+
+			.hud-right {
+				right: 12px;
+			}
+
+			/* Phone portrait: keep stacks on bottom corners. */
+			@media (max-width: 640px) and (orientation: portrait) {
+				.hud-left,
+				.hud-right {
+					bottom: 28px;
+					max-width: min(360px, calc(100vw - 24px));
+				}
+
+				.hud-left {
+					left: 12px;
+				}
+
+				.hud-right {
+					right: 12px;
+				}
+
+				.wrap {
+					padding: 6px 6px 26px;
+				}
 			}
 
 			/* Shared panel styling for Inputs and Stats. */
@@ -167,12 +210,20 @@
 
 			.panel .minbtn {
 				user-select: none;
-				padding: 6px 10px;
-				border-radius: 10px;
+				width: 28px;
+				height: 28px;
+				padding: 0;
+				border-radius: 999px;
 				border: 1px solid rgba(255, 255, 255, 0.10);
 				background: rgba(255, 255, 255, 0.07);
 				color: rgba(255, 255, 255, 0.85);
 				cursor: pointer;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				font-weight: 700;
+				font-size: 16px;
+				line-height: 1;
 			}
 
 			.panel .minbtn:hover {
@@ -185,6 +236,26 @@
 				gap: 8px;
 				margin: 0 0 8px;
 				flex-wrap: wrap;
+			}
+
+			/* Inputs panel: stack labels/fields neatly. */
+			.inputs-controls {
+				display: grid;
+				grid-template-columns: auto 1fr;
+				gap: 6px 8px;
+				align-items: center;
+				margin: 0 0 8px;
+			}
+
+			.inputs-controls input[type='number'],
+			.inputs-controls input[type='text'] {
+				width: 100%;
+				min-width: 160px;
+			}
+
+			.inputs-controls button {
+				grid-column: 1 / -1;
+				justify-self: start;
 			}
 
 			.panel label {
@@ -200,6 +271,10 @@
 				background: rgba(255, 255, 255, 0.06);
 				color: rgba(255, 255, 255, 0.88);
 				outline: none;
+			}
+
+			.panel input::placeholder {
+				color: rgba(255, 255, 255, 0.42);
 			}
 
 			.panel input[type='text'] {
@@ -297,7 +372,7 @@
 			Inputs contains configurable parameters.
 			Stats contains the live readout.
 		-->
-		<div class="hud">
+		<div class="hud-left">
 			<div id="inputsPanel" class="panel is-collapsed">
 				<div class="header">
 					<div class="title">Inputs</div>
@@ -307,19 +382,19 @@
 						type="button"
 						aria-expanded="false"
 					>
-						Show Inputs
+						+
 					</button>
 				</div>
 				<div class="content">
-					<div class="controls">
+					<div class="inputs-controls">
 						<label for="bobCount">Bobs</label>
 						<input
 							id="bobCount"
-							type="number"
-							min="1"
-							max="10"
-							step="1"
+							type="text"
+							inputmode="numeric"
+							pattern="[0-9]*"
 							value="3"
+							placeholder="1-10"
 						/>
 						<label for="bobSizes">Sizes</label>
 						<input
@@ -329,17 +404,26 @@
 							value="20, 30, 10"
 							placeholder="e.g. 20,22,24 (px radius)"
 						/>
+						<label for="bobLengths">Lengths</label>
+						<input
+							id="bobLengths"
+							type="text"
+							inputmode="decimal"
+							value="auto"
+							placeholder="e.g. auto or 260,220,200 (px)"
+						/>
 						<button id="applyBobs" type="button">Apply</button>
 					</div>
 					<div class="test-dim">
 						Bobs: 1 to 10.
-						Sizes: comma-separated list (one per bob) of radius values
-						in pixels, e.g. "20, 30, 10". Use "auto" or "-" for a bob
-						to use automatic sizing. Numbers are clamped to 6 to 80.
-						Click Apply (or press Enter) to use your changes.
+						Sizes/Lengths: comma-separated (one per bob).
+						Use "auto" or "-" to reset a value.
+						Click Apply to use changes.
 					</div>
 				</div>
 			</div>
+		</div>
+		<div class="hud-right">
 			<div id="statsPanel" class="panel is-collapsed" aria-live="polite">
 				<div class="header">
 					<div class="title">Stats</div>
@@ -349,7 +433,7 @@
 						type="button"
 						aria-expanded="false"
 					>
-						Show Stats
+						+
 					</button>
 				</div>
 				<div class="content">
@@ -370,7 +454,7 @@
 						type="button"
 						aria-expanded="false"
 					>
-						Show Tests
+						+
 					</button>
 				</div>
 				<div class="content">
@@ -382,8 +466,9 @@
 			</div>
 		</div>
 		<div class="hint">
-			Drag a bob to set angles. Click to nudge. Trails show recent paths.
+			Drag a bob. Click to nudge.
 		</div>
+		<div id="copyright">(c) N-Bob Pendulum - Prabhu &amp; GPT 5.2</div>
 
 		<script>
 			(() => {
@@ -423,7 +508,12 @@
 				const testsText = document.getElementById('testsText');
 				const bobCountInput = document.getElementById('bobCount');
 				const bobSizesInput = document.getElementById('bobSizes');
+				const bobLengthsInput = document.getElementById('bobLengths');
 				const applyBobsBtn = document.getElementById('applyBobs');
+
+				// Panels intentionally overlay the canvas.
+				// The pendulum area should remain a stable size whether panels
+				// are expanded or collapsed.
 
 				// ---------------------------------------------------------
 				// Test mode flag
@@ -490,15 +580,20 @@
 				// -------------------------------------------------------------
 				function wireCollapsiblePanel(panelEl, buttonEl, label) {
 					if (!panelEl || !buttonEl) return () => {};
+					const showLabel = `Show ${label}`;
+					const hideLabel = `Minimize ${label}`;
 					const setCollapsed = (collapsed) => {
 						panelEl.classList.toggle('is-collapsed', collapsed);
-						if (collapsed) {
-							buttonEl.textContent = `Show ${label}`;
-							buttonEl.setAttribute('aria-expanded', 'false');
-						} else {
-							buttonEl.textContent = `Minimize ${label}`;
-							buttonEl.setAttribute('aria-expanded', 'true');
-						}
+						buttonEl.textContent = collapsed ? '+' : '−';
+						buttonEl.setAttribute(
+							'aria-expanded',
+							collapsed ? 'false' : 'true'
+						);
+						buttonEl.setAttribute(
+							'aria-label',
+							collapsed ? showLabel : hideLabel
+						);
+						buttonEl.title = collapsed ? showLabel : hideLabel;
 					};
 					buttonEl.addEventListener('click', () => {
 						const collapsedClass = 'is-collapsed';
@@ -584,7 +679,7 @@
 					covHit('resizeCanvas');
 					const dpr = Math.max(
 						1,
-						Math.min(2, window.devicePixelRatio || 1)
+						Math.min(8, window.devicePixelRatio || 1)
 					);
 					const rect = canvas.getBoundingClientRect();
 					canvas.width = Math.floor(rect.width * dpr);
@@ -604,7 +699,101 @@
 					dragging: false,
 					dragIndex: 2,
 					lastT: performance.now(),
+					simTime: 0,
 				};
+
+				// =============================================================
+				// Period/frequency tracking (measured)
+				// =============================================================
+				// We estimate each bob's oscillation period by detecting peaks:
+				// a local max/min occurs when omega changes sign. Time between
+				// successive peaks of the same sign gives one full period.
+				// The estimate is smoothed to avoid jitter.
+				const periodTrack = {
+					lastOmega: [],
+					lastPosPeakT: [],
+					lastNegPeakT: [],
+					estT: [],
+					lastSampleT: NaN,
+				};
+
+				function resetPeriodTracker() {
+					const n = state.count;
+					periodTrack.lastOmega = new Array(n);
+					periodTrack.lastPosPeakT = new Array(n);
+					periodTrack.lastNegPeakT = new Array(n);
+					periodTrack.estT = new Array(n);
+					periodTrack.lastSampleT = NaN;
+					for (let i = 0; i < n; i++) {
+						periodTrack.lastOmega[i] = state.omega[i] ?? 0;
+						periodTrack.lastPosPeakT[i] = NaN;
+						periodTrack.lastNegPeakT[i] = NaN;
+						periodTrack.estT[i] = NaN;
+					}
+				}
+
+				function updatePeriodTracker(t) {
+					const n = state.count;
+					if (periodTrack.lastOmega.length !== n) resetPeriodTracker();
+					const tPrev = periodTrack.lastSampleT;
+					periodTrack.lastSampleT = t;
+					const thetaMin = 0.08;
+					const alpha = 0.25;
+					const canInterp =
+						Number.isFinite(tPrev) && Number.isFinite(t) && t > tPrev;
+
+					for (let i = 0; i < n; i++) {
+						const prevW = periodTrack.lastOmega[i];
+						const w = state.omega[i];
+						periodTrack.lastOmega[i] = w;
+						if (!Number.isFinite(prevW) || !Number.isFinite(w)) continue;
+						if (!Number.isFinite(t)) continue;
+
+						const th = state.theta[i];
+						if (!Number.isFinite(th) || Math.abs(th) < thetaMin) continue;
+
+						// Local maximum: omega crosses from + to -.
+						if (prevW > 0 && w <= 0) {
+							let tPeak = t;
+							if (canInterp && w !== prevW) {
+								const u = (0 - prevW) / (w - prevW);
+								tPeak = tPrev + (t - tPrev) * clamp(u, 0, 1);
+							}
+							const last = periodTrack.lastPosPeakT[i];
+							if (Number.isFinite(last)) {
+								const T = tPeak - last;
+								if (Number.isFinite(T) && T > 0.05 && T < 60) {
+									const cur = periodTrack.estT[i];
+									periodTrack.estT[i] = Number.isFinite(cur)
+										? cur * (1 - alpha) + T * alpha
+										: T;
+								}
+							}
+							periodTrack.lastPosPeakT[i] = tPeak;
+							continue;
+						}
+
+						// Local minimum: omega crosses from - to +.
+						if (prevW < 0 && w >= 0) {
+							let tPeak = t;
+							if (canInterp && w !== prevW) {
+								const u = (0 - prevW) / (w - prevW);
+								tPeak = tPrev + (t - tPrev) * clamp(u, 0, 1);
+							}
+							const last = periodTrack.lastNegPeakT[i];
+							if (Number.isFinite(last)) {
+								const T = tPeak - last;
+								if (Number.isFinite(T) && T > 0.05 && T < 60) {
+									const cur = periodTrack.estT[i];
+									periodTrack.estT[i] = Number.isFinite(cur)
+										? cur * (1 - alpha) + T * alpha
+										: T;
+								}
+							}
+							periodTrack.lastNegPeakT[i] = tPeak;
+						}
+					}
+				}
 
 				// =============================================================
 				// Tunable parameters
@@ -613,6 +802,9 @@
 				const params = {
 					g: 9.81,
 					lengths: [260, 220, 200],
+					// Optional per-segment length overrides (px).
+					// Use null for auto.
+					lengthOverrides: [null, null, null],
 					masses: [1.0, 1.0, 1.0],
 					damping: [0.01, 0.012, 0.012],
 					// Optional per-bob radius overrides (px).
@@ -631,6 +823,9 @@
 							bobCountInput?.getAttribute('value') ?? '',
 						bobSizesAttr:
 							bobSizesInput?.getAttribute('value') ?? '',
+						bobLengthsAttr:
+							bobLengthsInput?.getAttribute('value') ?? '',
+						lengthOverrides: params.lengthOverrides.slice(),
 						radiusOverrides: params.radiusOverrides.slice(),
 					}
 					: null;
@@ -653,6 +848,7 @@
 					const prevTheta = state.theta;
 					const prevOmega = state.omega;
 					const prevR = params.radiusOverrides;
+					const prevL = params.lengthOverrides;
 					state.count = n;
 
 					state.theta = new Array(n);
@@ -663,6 +859,10 @@
 					}
 
 					params.lengths = new Array(n).fill(200);
+					params.lengthOverrides = new Array(n);
+					for (let i = 0; i < n; i++) {
+						params.lengthOverrides[i] = prevL[i] ?? null;
+					}
 					params.masses = new Array(n).fill(1.0);
 					params.damping = new Array(n).fill(0.012);
 					params.damping[0] = 0.01;
@@ -673,6 +873,7 @@
 
 					state.dragIndex = clamp(state.dragIndex, 0, n - 1);
 					trails = Array.from({ length: n }, () => []);
+					resetPeriodTracker();
 				}
 
 				// =============================================================
@@ -689,21 +890,32 @@
 					const rect = canvas.getBoundingClientRect();
 					const w = rect.width;
 					const h = rect.height;
+					const aspect = w > 0 ? h / w : 1;
+					const isPortrait = aspect >= 1.20;
 
 					const pivot = {
 						x: w * 0.5,
-						y: h * 0.22,
+						y: h * (isPortrait ? 0.16 : 0.22),
 					};
 
 					const n = state.count;
-					const totalLen = Math.min(h * 0.62, w * 0.50);
+					const totalLen = Math.min(
+						h * (isPortrait ? 0.74 : 0.62),
+						w * (isPortrait ? 0.80 : 0.50)
+					);
 					const base = clamp(
 						(totalLen / Math.max(1, n)) * 0.92,
 						80,
 						260
 					);
 					for (let i = 0; i < n; i++) {
-						params.lengths[i] = base * (1 - 0.03 * i);
+						const autoLen = base * (1 - 0.03 * i);
+						const ov = params.lengthOverrides[i];
+						if (Number.isFinite(ov) && ov > 0) {
+							params.lengths[i] = clamp(ov, 40, 420);
+						} else {
+							params.lengths[i] = autoLen;
+						}
 					}
 
 					const bobRadiusAuto = (i) =>
@@ -930,19 +1142,29 @@
 				function drawTrail(points, hue) {
 					covHit('drawTrail');
 					if (points.length < 2) return;
+					// Draw as one smoothed curve (no per-point "dots").
 					ctx.lineCap = 'round';
 					ctx.lineJoin = 'round';
 					ctx.lineWidth = 2;
-
-					for (let i = 1; i < points.length; i++) {
-						const t = i / (points.length - 1);
-						const a = 0.02 + 0.50 * t * t;
-						ctx.strokeStyle = `hsla(${hue}, 85%, 72%, ${a})`;
-						ctx.beginPath();
-						ctx.moveTo(points[i - 1].x, points[i - 1].y);
-						ctx.lineTo(points[i].x, points[i].y);
+					ctx.strokeStyle = `hsla(${hue}, 85%, 72%, 0.35)`;
+					ctx.beginPath();
+					ctx.moveTo(points[0].x, points[0].y);
+					if (points.length === 2) {
+						ctx.lineTo(points[1].x, points[1].y);
 						ctx.stroke();
+						return;
 					}
+
+					for (let i = 1; i < points.length - 1; i++) {
+						const p0 = points[i];
+						const p1 = points[i + 1];
+						const mx = (p0.x + p1.x) * 0.5;
+						const my = (p0.y + p1.y) * 0.5;
+						ctx.quadraticCurveTo(p0.x, p0.y, mx, my);
+					}
+					const last = points[points.length - 1];
+					ctx.lineTo(last.x, last.y);
+					ctx.stroke();
 				}
 
 				// =============================================================
@@ -951,12 +1173,20 @@
 				// Rendering order each frame:
 				// 1) background vignette
 				// 2) trails
-				// 3) rod segments
-				// 4) pivot cap + bobs
+				// 3) ground shadows (all bobs)
+				// 4) rod segments
+				// 5) pivot cap + bobs
 				function draw() {
 					covHit('draw');
 					const { pivot, bobRadius, w, h } = layout();
 					ctx.clearRect(0, 0, w, h);
+
+					// Canvas background (drawn, not CSS) so it scales with DPR.
+					const bg = ctx.createLinearGradient(0, 0, 0, h);
+					bg.addColorStop(0, 'rgba(255, 255, 255, 0.04)');
+					bg.addColorStop(1, 'rgba(255, 255, 255, 0.015)');
+					ctx.fillStyle = bg;
+					ctx.fillRect(0, 0, w, h);
 
 					const vignette = ctx.createRadialGradient(
 						w * 0.5,
@@ -980,28 +1210,48 @@
 						drawTrail(trails[i], 200 + i * 35);
 					}
 
-					const lastIdx = positions.length - 1;
-					const last = positions[lastIdx];
-					const lastR = bobRadius(lastIdx);
+					const lastR = bobRadius(positions.length - 1);
 					const totalLen = params.lengths.reduce((a, b) => a + b, 0);
+					let maxR = 0;
+					for (let i = 0; i < positions.length; i++) {
+						maxR = Math.max(maxR, bobRadius(i));
+					}
+					const groundY = pivot.y + totalLen + maxR * 0.9;
 
-					const shadowY = pivot.y + totalLen + lastR * 0.9;
-					const shadowW = lastR * 3.0;
-					const shadowH = lastR * 0.78;
-					const shadow = ctx.createRadialGradient(
-						last.x,
-						shadowY,
-						4,
-						last.x,
-						shadowY,
-						shadowW
-					);
-					shadow.addColorStop(0, 'rgba(0,0,0,0.35)');
-					shadow.addColorStop(1, 'rgba(0,0,0,0)');
-					ctx.fillStyle = shadow;
-					ctx.beginPath();
-					ctx.ellipse(last.x, shadowY, shadowW, shadowH, 0, 0, TAU);
-					ctx.fill();
+					// Ground shadows for all bobs.
+					for (let i = 0; i < positions.length; i++) {
+						const pos = positions[i];
+						const r = bobRadius(i);
+						const shadowW = r * 2.6;
+						const shadowH = r * 0.68;
+						const t =
+							positions.length > 1
+								? i / (positions.length - 1)
+								: 1;
+						const a0 = 0.08 + 0.20 * t;
+						const shadow = ctx.createRadialGradient(
+							pos.x,
+							groundY,
+							4,
+							pos.x,
+							groundY,
+							shadowW
+						);
+						shadow.addColorStop(0, `rgba(0,0,0,${a0})`);
+						shadow.addColorStop(1, 'rgba(0,0,0,0)');
+						ctx.fillStyle = shadow;
+						ctx.beginPath();
+						ctx.ellipse(
+							pos.x,
+							groundY,
+							shadowW,
+							shadowH,
+							0,
+							0,
+							TAU
+						);
+						ctx.fill();
+					}
 
 					ctx.lineCap = 'round';
 					ctx.strokeStyle = 'rgba(240, 245, 255, 0.75)';
@@ -1076,8 +1326,8 @@
 					ctx.strokeStyle = 'rgba(255,255,255,0.06)';
 					ctx.lineWidth = 1;
 					ctx.beginPath();
-					ctx.moveTo(w * 0.1, shadowY + lastR * 0.85);
-					ctx.lineTo(w * 0.9, shadowY + lastR * 0.85);
+					ctx.moveTo(w * 0.1, groundY + maxR * 0.85);
+					ctx.lineTo(w * 0.9, groundY + maxR * 0.85);
 					ctx.stroke();
 				}
 
@@ -1100,6 +1350,8 @@
 
 				// Returns the topmost bob index under the pointer,
 				// or -1 if none.
+				// Includes a small "click cushion" to make it easier to grab
+				// a moving bob.
 				function hitTest(clientX, clientY) {
 					covHit('hitTest');
 					const { pivot, bobRadius } = layout();
@@ -1116,7 +1368,11 @@
 						const dx = x - p[i].x;
 						const dy = y - p[i].y;
 						const r = bobRadius(i);
-						if (dx * dx + dy * dy <= (r * 1.4) ** 2) return i;
+						// Click cushion: allow selecting slightly outside the
+						// visible bob, to make grabbing moving bobs easier.
+						const cushion = 14;
+						const pickR = r * 1.4 + cushion;
+						if (dx * dx + dy * dy <= pickR * pickR) return i;
 					}
 					return -1;
 				}
@@ -1250,21 +1506,31 @@
 							`dt=${fmt(dtRaw * 1000, 1)} ms`
 					);
 					lines += `\n\n`;
-					lines += span(
-						'stat-hdr',
-						`#  theta(deg)  omega(rad/s)  ` +
-							`x(px)  y(px)  |v|(px/s)`
-					);
+					{
+						const hdrIdx = '#'.padEnd(3);
+						const hdrT = 'T(s)'.padStart(6);
+						const hdrF = 'f(Hz)'.padStart(6);
+						const hdrTheta = 'th(deg)'.padStart(7);
+						const hdrOmega = 'w(rad/s)'.padStart(9);
+						const hdrV = '|v|(px/s)'.padStart(10);
+						lines += span(
+							'stat-hdr',
+							`${hdrIdx}  ${hdrT}  ${hdrF}  ${hdrTheta}  ` +
+								`${hdrOmega}  ${hdrV}`
+						);
+					}
 					lines += `\n`;
 					for (let i = 0; i < state.count; i++) {
 						const deg = radToDeg(state.theta[i]);
 						const speed = Math.hypot(v[i].x, v[i].y);
+						const T = periodTrack.estT[i];
+						const f = Number.isFinite(T) && T > 0 ? 1 / T : NaN;
 						const mark = i === idx ? '*' : ' ';
 						const colIdx = `${mark}${String(i + 1).padStart(2)}`;
+						const colT = fmt(T, 2).padStart(6);
+						const colF = fmt(f, 2).padStart(6);
 						const colTheta = fmt(deg, 1).padStart(7);
 						const colOmega = fmt(state.omega[i], 3).padStart(9);
-						const colX = fmt(p[i].x, 1).padStart(8);
-						const colY = fmt(p[i].y, 1).padStart(8);
 						const colV = fmt(speed, 1).padStart(10);
 
 						const idxCls = i === idx ? 'stat-sel' : 'test-dim';
@@ -1280,13 +1546,13 @@
 
 						lines += span(idxCls, colIdx);
 						lines += `  `;
+						lines += span('test-dim', colT);
+						lines += `  `;
+						lines += span('test-dim', colF);
+						lines += `  `;
 						lines += span(tCls, colTheta);
 						lines += `  `;
 						lines += span(wCls, colOmega);
-						lines += `  `;
-						lines += colX;
-						lines += `  `;
-						lines += colY;
 						lines += `  `;
 						lines += vCls ? span(vCls, colV) : colV;
 						lines += `\n`;
@@ -1328,6 +1594,7 @@
 
 					if (!prefersReducedMotion && !state.dragging) {
 						const dt = clamp(dtRaw, 0, 1 / 15);
+						state.simTime += dt;
 						const steps = Math.max(
 							1,
 							Math.ceil(dt / params.maxStep)
@@ -1349,6 +1616,10 @@
 								}
 							}
 						}
+					}
+
+					if (!prefersReducedMotion && !state.dragging) {
+						updatePeriodTracker(state.simTime);
 					}
 
 					if (!prefersReducedMotion) {
@@ -1388,6 +1659,34 @@
 						: state.count;
 					setBobCount(n);
 
+					const lenTextRaw = (bobLengthsInput?.value ?? '').trim();
+					const lenTextLower = lenTextRaw.toLowerCase();
+					if (lenTextLower.length === 0 || lenTextLower === 'auto') {
+						params.lengthOverrides = new Array(state.count);
+						params.lengthOverrides.fill(null);
+					} else {
+						const parts = lenTextRaw
+							.split(/[\s,]+/)
+							.map((s) => s.trim())
+							.filter(Boolean);
+						const next = new Array(state.count);
+						for (let i = 0; i < state.count; i++) {
+							const rawTok = parts[i];
+							const tok = (rawTok ?? '').toLowerCase();
+							if (!tok || tok === '-' || tok === 'auto') {
+								next[i] = null;
+								continue;
+							}
+							const v = Number(rawTok);
+							if (Number.isFinite(v) && v > 0) {
+								next[i] = clamp(v, 40, 420);
+							} else {
+								next[i] = null;
+							}
+						}
+						params.lengthOverrides = next;
+					}
+
 					const text = (bobSizesInput?.value ?? '').trim();
 					if (text.length === 0) {
 						params.radiusOverrides = new Array(state.count);
@@ -1425,12 +1724,28 @@
 				}
 
 				// Wire UI events.
-				applyBobsBtn?.addEventListener('click', applyBobCountFromUI);
+				function applyInputsFromUI() {
+					applyBobCountFromUI();
+					setInputsCollapsed(true);
+				}
+
+				applyBobsBtn?.addEventListener('click', () => {
+					applyInputsFromUI();
+				});
 				bobCountInput?.addEventListener('keydown', (e) => {
-					if (e.key === 'Enter') applyBobCountFromUI();
+					if (e.key !== 'Enter') return;
+					e.preventDefault();
+					applyInputsFromUI();
 				});
 				bobSizesInput?.addEventListener('keydown', (e) => {
-					if (e.key === 'Enter') applyBobCountFromUI();
+					if (e.key !== 'Enter') return;
+					e.preventDefault();
+					applyInputsFromUI();
+				});
+				bobLengthsInput?.addEventListener('keydown', (e) => {
+					if (e.key !== 'Enter') return;
+					e.preventDefault();
+					applyInputsFromUI();
 				});
 
 				// =========================================================
@@ -1492,10 +1807,19 @@
 								dragging: state.dragging,
 								dragIndex: state.dragIndex,
 								lastT: state.lastT,
+								simTime: state.simTime,
+							},
+							periodTrack: {
+								lastOmega: periodTrack.lastOmega.slice(),
+								lastPosPeakT: periodTrack.lastPosPeakT.slice(),
+								lastNegPeakT: periodTrack.lastNegPeakT.slice(),
+								estT: periodTrack.estT.slice(),
+								lastSampleT: periodTrack.lastSampleT,
 							},
 							params: {
 								g: params.g,
 								lengths: params.lengths.slice(),
+									lengthOverrides: params.lengthOverrides.slice(),
 								masses: params.masses.slice(),
 								damping: params.damping.slice(),
 								radiusOverrides: params.radiusOverrides.slice(),
@@ -1515,8 +1839,21 @@
 						state.dragging = s.state.dragging;
 						state.dragIndex = s.state.dragIndex;
 						state.lastT = s.state.lastT;
+						state.simTime = s.state.simTime;
+						if (s.periodTrack) {
+							periodTrack.lastOmega = s.periodTrack.lastOmega.slice();
+							periodTrack.lastPosPeakT =
+								s.periodTrack.lastPosPeakT.slice();
+							periodTrack.lastNegPeakT =
+								s.periodTrack.lastNegPeakT.slice();
+							periodTrack.estT = s.periodTrack.estT.slice();
+							periodTrack.lastSampleT = s.periodTrack.lastSampleT;
+						} else {
+							resetPeriodTracker();
+						}
 						params.g = s.params.g;
 						params.lengths = s.params.lengths.slice();
+							params.lengthOverrides = s.params.lengthOverrides.slice();
 						params.masses = s.params.masses.slice();
 						params.damping = s.params.damping.slice();
 						params.radiusOverrides =
@@ -1643,39 +1980,57 @@
 					//  5) Body overflow hidden: no scrollbars during use.
 					//  6) Canvas has nonzero size: viewport layout is wired.
 					//  7) Default bob sizes are 20,30,10: defaults stay stable.
-					//  8) resizeCanvas sets backing size: DPR sizing is applied.
-					//  9) pointerToThetaFromPoint vertical is ~0: angle mapping.
-					// 10) clamp clamps range: utility clamps endpoints.
-					// 11) fmt prints finite and dash: formatting helper behavior.
-					// 12) solveLinearSystem solves 2x2: numeric solver sanity.
-					// 13) solveLinearSystem singular => zeros: fallback works.
-					// 14) setBobCount clamps and resizes: arrays/trails resize.
-					// 15) layout bobRadius uses overrides: clamps + auto sizing.
-					// 16) forwardKinematics theta=0 points down: kinematics OK.
-					// 17) pushTrail caps to trailLen: trail buffer keeps bound.
-					// 18) applyBobCountFromUI parses sizes: "auto"/"-" => null.
-					// 19) applyBobCountFromUI clamps size tokens: limits apply.
-					// 20) invalid bob count keeps current N: blank input safe.
-					// 21) nudge N=1 changes omega once: deterministic impulse.
-					// 22) nudge N=2 changes both ends: deterministic impulse.
-					// 23) hitTest finds last bob center: interaction picking.
-					// 24) rk4Step returns finite vector: integration stable.
-					// 25) setBobCount supports N=1..10: all counts are valid.
-					// 26) setBobCount clamps out-of-range: 0->1 and 999->10.
-					// 27) setBobCount ignores NaN/Infinity: keeps current N.
-					// 28) applyBobCountFromUI sets all N=1..10 from input.
-					// 29) applyBobCountFromUI sizes missing => auto for rest.
-					// 30) applyBobCountFromUI sizes extra => ignored beyond N.
-					// 31) applyBobCountFromUI sizes invalid => auto (null).
-					// 32) applyBobCountFromUI parses whitespace separators.
-					// 33) forwardKinematics straight down sums lengths.
-					// 34) forwardKinematics right angle places first bob.
-					// 35) applyBobCountFromUI clamps bobCount text inputs.
+					//  8) Default bob lengths are auto: defaults stay stable.
+					//  9) resizeCanvas sets backing size: DPR sizing is applied.
+					// 10) pointerToThetaFromPoint vertical is ~0: angle mapping.
+					// 11) clamp clamps range: utility clamps endpoints.
+					// 12) fmt prints finite and dash: formatting helper behavior.
+					// 13) solveLinearSystem solves 2x2: numeric solver sanity.
+					// 14) solveLinearSystem singular => zeros: fallback works.
+					// 15) setBobCount clamps and resizes: arrays/trails resize.
+					// 16) layout bobRadius uses overrides: clamps + auto sizing.
+					// 17) forwardKinematics theta=0 points down: kinematics OK.
+					// 18) pushTrail caps to trailLen: trail buffer keeps bound.
+					// 19) applyBobCountFromUI parses sizes: "auto"/"-" => null.
+					// 20) applyBobCountFromUI clamps size tokens: limits apply.
+					// 21) invalid bob count keeps current N: blank input safe.
+					// 22) nudge N=1 changes omega once: deterministic impulse.
+					// 23) nudge N=2 changes both ends: deterministic impulse.
+					// 24) hitTest finds last bob center: interaction picking.
+					// 25) hitTest selects near bob edge: click cushion works.
+					// 26) rk4Step returns finite vector: integration stable.
+					// 27) setBobCount supports N=1..10: all counts are valid.
+					// 28) setBobCount clamps out-of-range: 0->1 and 999->10.
+					// 29) setBobCount ignores NaN/Infinity: keeps current N.
+					// 30) applyBobCountFromUI sets all N=1..10 from input.
+					// 31) applyBobCountFromUI sizes missing => auto for rest.
+					// 32) applyBobCountFromUI sizes extra => ignored beyond N.
+					// 33) applyBobCountFromUI sizes invalid => auto (null).
+					// 34) applyBobCountFromUI parses whitespace separators.
+					// 35) forwardKinematics straight down sums lengths.
+					// 36) forwardKinematics right angle places first bob.
+					// 37) applyBobCountFromUI clamps bobCount text inputs.
+					// 38) Apply click collapses Inputs panel.
+					// 39) Copyright footer exists and matches text.
+					// 40) Hint is small and top-placed.
+					// 41) applyBobCountFromUI parses lengths tokens.
+					// 42) applyBobCountFromUI clamps lengths tokens.
+					// 43) applyBobCountFromUI lengths invalid => auto.
+					// 44) Wrap padding bottom stays small.
+					// 45) Inputs toggle does not resize canvas.
+					// 46) Stats toggle does not resize canvas.
+					// 47) Toggle buttons show + and -.
+					// 48) Enter key applies Inputs.
+					// 49) Inputs stack stays above footer.
+					// 50) Stats shows period and frequency.
+					// 51) applyBobCountFromUI length tokens are case-insensitive.
+					// 52) Period tracker estimates sine wave period.
 					test('HTML core elements exist', () => {
 						assert(canvas instanceof HTMLCanvasElement);
 						assert(inputsPanel);
 						assert(statsPanel);
 						assert(testsPanel);
+						assert(bobLengthsInput);
 						assert(!testsPanel.hidden);
 					});
 
@@ -1720,6 +2075,12 @@
 						eq(defaults.radiusOverrides[0], 20);
 						eq(defaults.radiusOverrides[1], 30);
 						eq(defaults.radiusOverrides[2], 10);
+					});
+
+					test('Default bob lengths are auto', () => {
+						assert(defaults);
+						eq(defaults.bobLengthsAttr, 'auto');
+						for (const v of defaults.lengthOverrides) eq(v, null);
 					});
 
 					test('resizeCanvas sets backing size', () => {
@@ -1903,6 +2264,28 @@
 						eq(hitTest(cx, cy), 1);
 					});
 
+					test('hitTest selects near bob edge', () => {
+						setBobCount(2);
+						state.theta[0] = 0.6;
+						state.theta[1] = -0.2;
+						state.omega[0] = 0;
+						state.omega[1] = 0;
+						const L = layout();
+						const rect = canvas.getBoundingClientRect();
+						const { p } = forwardKinematics(
+							L.pivot,
+							state.theta,
+							state.omega
+						);
+						const i = 1;
+						const pos = p[i];
+						const r = L.bobRadius(i);
+						// Click slightly outside the visible bob.
+						const x = rect.left + pos.x + r + 8;
+						const y = rect.top + pos.y;
+						eq(hitTest(x, y), i);
+					});
+
 					test('rk4Step returns finite vector', () => {
 						setBobCount(3);
 						const n = state.count;
@@ -2051,6 +2434,196 @@
 						eq(state.count, 3);
 					});
 
+					test('Apply click collapses Inputs panel', () => {
+						assert(inputsPanel);
+						assert(applyBobsBtn);
+						setInputsCollapsed(false);
+						bobCountInput.value = '3';
+						bobSizesInput.value = '';
+						applyBobsBtn.click();
+						assert(inputsPanel.classList.contains('is-collapsed'));
+					});
+
+					test('Copyright footer exists', () => {
+						const el = document.getElementById('copyright');
+						assert(el);
+						eq(
+							el.textContent.trim(),
+							'(c) N-Bob Pendulum - Prabhu & GPT 5.2'
+						);
+						const cs = getComputedStyle(el);
+						eq(cs.position, 'fixed');
+						eq(cs.left, '12px');
+						eq(cs.bottom, '6px');
+					});
+
+					test('Hint is small and top-placed', () => {
+						const el = document.querySelector('.hint');
+						assert(el);
+						eq(el.textContent.trim(), 'Drag a bob. Click to nudge.');
+						const cs = getComputedStyle(el);
+						eq(cs.position, 'fixed');
+						assert(cs.top !== 'auto');
+						eq(cs.fontSize, '11px');
+					});
+
+					test('applyBobCountFromUI parses lengths tokens', () => {
+						bobCountInput.value = '3';
+						bobLengthsInput.value = 'auto, 250, -';
+						bobSizesInput.value = '';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+						eq(params.lengthOverrides[0], null);
+						eq(params.lengthOverrides[1], 250);
+						eq(params.lengthOverrides[2], null);
+					});
+
+					test('applyBobCountFromUI clamps lengths tokens', () => {
+						bobCountInput.value = '3';
+						bobLengthsInput.value = '1, 999, 100';
+						bobSizesInput.value = '';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+						eq(params.lengthOverrides[0], 40);
+						eq(params.lengthOverrides[1], 420);
+						eq(params.lengthOverrides[2], 100);
+					});
+
+					test('applyBobCountFromUI lengths invalid => auto', () => {
+						bobCountInput.value = '3';
+						bobLengthsInput.value = 'nope, 0, -5';
+						bobSizesInput.value = '';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+						eq(params.lengthOverrides[0], null);
+						eq(params.lengthOverrides[1], null);
+						eq(params.lengthOverrides[2], null);
+					});
+
+					test('Wrap padding bottom stays small', () => {
+						const el = document.querySelector('.wrap');
+						assert(el);
+						const cs = getComputedStyle(el);
+						const pb = Number.parseFloat(cs.paddingBottom);
+						assert(Number.isFinite(pb));
+						// Padding is fixed; panels overlay the canvas.
+						assert(pb >= 24);
+						assert(pb <= 32);
+					});
+
+					test('Inputs toggle does not resize canvas', () => {
+						const r0 = canvas.getBoundingClientRect();
+						setInputsCollapsed(false);
+						const r1 = canvas.getBoundingClientRect();
+						setInputsCollapsed(true);
+						const r2 = canvas.getBoundingClientRect();
+						approx(r1.width, r0.width, 1e-6);
+						approx(r1.height, r0.height, 1e-6);
+						approx(r2.width, r0.width, 1e-6);
+						approx(r2.height, r0.height, 1e-6);
+					});
+
+					test('Stats toggle does not resize canvas', () => {
+						const r0 = canvas.getBoundingClientRect();
+						setStatsCollapsed(false);
+						const r1 = canvas.getBoundingClientRect();
+						setStatsCollapsed(true);
+						const r2 = canvas.getBoundingClientRect();
+						approx(r1.width, r0.width, 1e-6);
+						approx(r1.height, r0.height, 1e-6);
+						approx(r2.width, r0.width, 1e-6);
+						approx(r2.height, r0.height, 1e-6);
+					});
+
+					test('Toggle buttons show + and -', () => {
+						assert(toggleInputsBtn);
+						assert(toggleStatsBtn);
+						eq(toggleInputsBtn.textContent.trim(), '+');
+						eq(toggleStatsBtn.textContent.trim(), '+');
+						setInputsCollapsed(false);
+						setStatsCollapsed(false);
+						eq(toggleInputsBtn.textContent.trim(), '−');
+						eq(toggleStatsBtn.textContent.trim(), '−');
+						if (testsEnabled && toggleTestsBtn && setTestsCollapsed) {
+							setTestsCollapsed(true);
+							eq(toggleTestsBtn.textContent.trim(), '+');
+							setTestsCollapsed(false);
+							eq(toggleTestsBtn.textContent.trim(), '−');
+						}
+					});
+
+					test('Enter key applies Inputs', () => {
+						assert(inputsPanel);
+						assert(bobCountInput);
+						assert(bobSizesInput);
+						setInputsCollapsed(false);
+						bobCountInput.value = '4';
+						bobSizesInput.value = '';
+						bobCountInput.dispatchEvent(
+							new KeyboardEvent('keydown', {
+								key: 'Enter',
+								bubbles: true,
+							})
+						);
+						eq(state.count, 4);
+						assert(inputsPanel.classList.contains('is-collapsed'));
+					});
+
+					test('Inputs stack stays above footer', () => {
+						const hud = document.querySelector('.hud-left');
+						const foot = document.getElementById('copyright');
+						assert(hud);
+						assert(foot);
+						const hb = Number.parseFloat(getComputedStyle(hud).bottom);
+						const fb = Number.parseFloat(getComputedStyle(foot).bottom);
+						assert(Number.isFinite(hb));
+						assert(Number.isFinite(fb));
+						assert(hb > fb);
+					});
+
+					test('Stats shows period and frequency', () => {
+						assert(statsText);
+						setBobCount(2);
+						state.theta[0] = 0.5;
+						state.theta[1] = -0.2;
+						state.omega[0] = 2.0;
+						state.omega[1] = -3.0;
+						updateStats(1 / 60);
+						const s = statsText.textContent || '';
+						assert(s.includes('T(s)'));
+						assert(s.includes('f(Hz)'));
+					});
+
+					test('applyBobCountFromUI length tokens are case-insensitive', () => {
+						bobCountInput.value = '3';
+						bobLengthsInput.value = 'AUTO, 250, -';
+						bobSizesInput.value = '';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+						eq(params.lengthOverrides[0], null);
+						eq(params.lengthOverrides[1], 250);
+						eq(params.lengthOverrides[2], null);
+					});
+
+					test('Period tracker estimates sine wave period', () => {
+						setBobCount(1);
+						state.dragIndex = 0;
+						resetPeriodTracker();
+						state.simTime = 0;
+						const w = 2.0;
+						const expectedT = TAU / w;
+						const dt = 0.01;
+						for (let k = 0; k < 2000; k++) {
+							const t = k * dt;
+							state.theta[0] = Math.sin(w * t);
+							state.omega[0] = w * Math.cos(w * t);
+							updatePeriodTracker(t);
+						}
+						assert(Number.isFinite(periodTrack.estT[0]));
+						approx(periodTrack.estT[0], expectedT, 0.03);
+						approx(1 / periodTrack.estT[0], w / TAU, 0.01);
+					});
+
 					testsText.textContent =
 						'Ready. Click Run to execute tests.';
 					runTestsBtn.addEventListener('click', () => {
@@ -2060,6 +2633,7 @@
 
 				resizeCanvas();
 				applyBobCountFromUI();
+				resetPeriodTracker();
 				draw();
 
 				requestAnimationFrame((t) => {
