@@ -24,6 +24,22 @@
 	  e.g. "auto" or "260, 220, 200".
 	  - Use "auto" or "-" per entry to revert that segment to automatic.
 	- Press Enter in any Inputs field to apply.
+	- Optional: provide Inputs via URL query params (auto-applied on load).
+	  Supported params (aliases in parentheses):
+	  - bobs (bobCount, n): number of bobs, e.g. ?bobs=4
+	  - sizes (bobSizes, radii): per-bob radius list (px), e.g.
+	    &sizes=20,30,10,14
+	  - lengths (bobLengths, lens): per-bob rod length list (px), e.g.
+	    &lengths=auto,250,-,200
+	  Notes:
+	  - Lists can be comma- or space-separated.
+	  - Use "auto" or "-" per entry to revert that value.
+	  - You can combine these with ?tests=1.
+	  Examples:
+	  - pendulum.html?bobs=5
+	  - pendulum.html?bobs=4&sizes=20,30,10,14
+	  - pendulum.html?bobs=4&lengths=auto,250,-,200
+	  - pendulum.html?bobs=6&sizes=auto,26,24,22,20,18&tests=1
 	- Optional: add ?tests=1 to the URL to show a Tests panel and run the
 	  embedded unit tests (no external runner required).
 	  - Tests show numbered PASS/FAIL output and simple function coverage.
@@ -243,7 +259,7 @@
 			/* Inputs panel: stack labels/fields neatly. */
 			.inputs-controls {
 				display: grid;
-				grid-template-columns: auto 1fr;
+				grid-template-columns: auto auto minmax(0, 1fr);
 				gap: 6px 8px;
 				align-items: center;
 				margin: 0 0 8px;
@@ -252,12 +268,37 @@
 			.inputs-controls input[type='number'],
 			.inputs-controls input[type='text'] {
 				width: 100%;
-				min-width: 160px;
+				min-width: 0;
 			}
 
 			.inputs-controls button {
-				grid-column: 1 / -1;
 				justify-self: start;
+			}
+
+			/* Default layout for label/value rows. */
+			.inputs-controls label {
+				grid-column: 1;
+			}
+
+			.inputs-controls input {
+				grid-column: 2 / -1;
+			}
+
+			/* Apply + Share URL on the same row. */
+			.inputs-controls #applyBobs {
+				grid-column: 1;
+			}
+
+			.inputs-controls label[for='shareUrl'] {
+				grid-column: 2;
+				white-space: nowrap;
+			}
+
+			.inputs-controls #shareUrl {
+				grid-column: 3;
+				width: 100%;
+				min-width: 0;
+				box-sizing: border-box;
 			}
 
 			.panel label {
@@ -415,6 +456,14 @@
 							placeholder="e.g. auto or 260,220,200 (px)"
 						/>
 						<button id="applyBobs" type="button">Apply</button>
+						<label for="shareUrl">Share URL</label>
+						<input
+							id="shareUrl"
+							type="text"
+							readonly
+							spellcheck="false"
+							placeholder="Applied URL appears here"
+						/>
 					</div>
 					<div class="test-dim">
 						Bobs: 1 to 10.
@@ -512,6 +561,114 @@
 				const bobSizesInput = document.getElementById('bobSizes');
 				const bobLengthsInput = document.getElementById('bobLengths');
 				const applyBobsBtn = document.getElementById('applyBobs');
+				const shareUrlInput = document.getElementById('shareUrl');
+
+				// ---------------------------------------------------------
+				// URL -> Inputs parameters
+				//
+				// Allow setting the Inputs panel via query params.
+				// Examples:
+				//   ?bobs=4&sizes=20,30,10,14&lengths=auto,250,-,200
+				// Aliases are supported for convenience.
+				//
+				// Note: We only populate the input fields here.
+				// applyBobCountFromUI() runs at startup and will apply them.
+				// ---------------------------------------------------------
+				function applyInputsFromQuery(searchOrParams) {
+					let qs;
+					try {
+						qs =
+							searchOrParams instanceof URLSearchParams
+								? searchOrParams
+								: new URLSearchParams(
+										String(searchOrParams ?? window.location.search)
+								);
+					} catch {
+						return false;
+					}
+					const getFirst = (keys) => {
+						for (const k of keys) {
+							const v = qs.get(k);
+							if (v !== null) return v;
+						}
+						return null;
+					};
+
+					let changed = false;
+					const bobs = getFirst(['bobs', 'bobCount', 'n']);
+					const sizes = getFirst(['sizes', 'bobSizes', 'radii']);
+					const lengths = getFirst(['lengths', 'bobLengths', 'lens']);
+
+					if (bobs !== null && bobCountInput) {
+						bobCountInput.value = bobs;
+						changed = true;
+					}
+					if (sizes !== null && bobSizesInput) {
+						bobSizesInput.value = sizes;
+						changed = true;
+					}
+					if (lengths !== null && bobLengthsInput) {
+						bobLengthsInput.value = lengths;
+						changed = true;
+					}
+					return changed;
+				}
+
+				function normalizeListText(raw, fallback) {
+					const s = String(raw ?? '').trim();
+					if (s.length === 0) return fallback;
+					const parts = s
+						.split(/[\s,]+/)
+						.map((x) => x.trim())
+						.filter(Boolean)
+						.map((x) => {
+							const t = x.toLowerCase();
+							if (t === 'auto') return 'auto';
+							if (t === '-') return '-';
+							return x;
+						});
+					if (parts.length === 0) return fallback;
+					return parts.join(',');
+				}
+
+				function updateShareUrlFromInputs() {
+					if (!shareUrlInput) return;
+					try {
+						const u = new URL(window.location.href);
+						const qs = u.searchParams;
+						const bobs =
+							String(state.count) ||
+							String(bobCountInput?.value ?? '').trim();
+						const sizes = normalizeListText(
+							bobSizesInput?.value,
+							'auto'
+						);
+						const lengths = normalizeListText(
+							bobLengthsInput?.value,
+							'auto'
+						);
+
+						qs.set('bobs', bobs);
+						qs.set('sizes', sizes);
+						qs.set('lengths', lengths);
+						shareUrlInput.value = u.toString();
+					} catch {
+						// no-op
+					}
+				}
+
+				if (shareUrlInput) {
+					const selectAll = () => {
+						try {
+							shareUrlInput.focus();
+							shareUrlInput.select();
+						} catch {
+							// no-op
+						}
+					};
+					shareUrlInput.addEventListener('click', selectAll);
+					shareUrlInput.addEventListener('focus', selectAll);
+				}
 
 				// Panels intentionally overlay the canvas.
 				// The pendulum area should remain a stable size whether panels
@@ -1738,6 +1895,7 @@
 					);
 					updateStats(0);
 					draw();
+					updateShareUrlFromInputs();
 				}
 
 				// Wire UI events.
@@ -2042,6 +2200,11 @@
 					// 50) Stats shows period and frequency.
 					// 51) applyBobCountFromUI length tokens are case-insensitive.
 					// 52) Period tracker estimates sine wave period.
+					// 53) applyInputsFromQuery sets Inputs fields.
+					// 54) URL params apply to state/overrides.
+					// 55) Share URL preserves tests=1.
+					// 56) Share URL clamps bobs.
+					// 57) Share URL normalizes list tokens.
 					test('HTML core elements exist', () => {
 						assert(canvas instanceof HTMLCanvasElement);
 						assert(inputsPanel);
@@ -2641,6 +2804,75 @@
 						approx(1 / periodTrack.estT[0], w / TAU, 0.01);
 					});
 
+					test('applyInputsFromQuery sets Inputs fields', () => {
+						assert(bobCountInput);
+						assert(bobSizesInput);
+						assert(bobLengthsInput);
+						bobCountInput.value = '3';
+						bobSizesInput.value = '20,30,10';
+						bobLengthsInput.value = 'auto';
+						const qs = new URLSearchParams(
+							'bobs=4&sizes=6 7 8 9&lengths=auto,250,-,200'
+						);
+						const changed = applyInputsFromQuery(qs);
+						assert(changed);
+						eq(bobCountInput.value, '4');
+						eq(bobSizesInput.value, '6 7 8 9');
+						eq(bobLengthsInput.value, 'auto,250,-,200');
+					});
+
+					test('URL params apply to state/overrides', () => {
+						assert(bobCountInput);
+						assert(bobSizesInput);
+						assert(bobLengthsInput);
+						const qs = new URLSearchParams(
+							'bobs=4&sizes=6,7,auto,9&lengths=auto,250,-,200'
+						);
+						applyInputsFromQuery(qs);
+						applyBobCountFromUI();
+						eq(state.count, 4);
+						eq(params.radiusOverrides[0], 6);
+						eq(params.radiusOverrides[1], 7);
+						eq(params.radiusOverrides[2], null);
+						eq(params.radiusOverrides[3], 9);
+						eq(params.lengthOverrides[0], null);
+						eq(params.lengthOverrides[1], 250);
+						eq(params.lengthOverrides[2], null);
+						eq(params.lengthOverrides[3], 200);
+					});
+
+					test('Share URL preserves tests=1', () => {
+						assert(shareUrlInput);
+						bobCountInput.value = '3';
+						bobSizesInput.value = '20,30,10';
+						bobLengthsInput.value = 'auto';
+						applyBobCountFromUI();
+						const u = new URL(shareUrlInput.value);
+						eq(u.searchParams.get('tests'), '1');
+					});
+
+					test('Share URL clamps bobs', () => {
+						assert(shareUrlInput);
+						bobCountInput.value = '999';
+						bobSizesInput.value = '';
+						bobLengthsInput.value = 'auto';
+						applyBobCountFromUI();
+						eq(state.count, 10);
+						const u = new URL(shareUrlInput.value);
+						eq(u.searchParams.get('bobs'), '10');
+					});
+
+					test('Share URL normalizes list tokens', () => {
+						assert(shareUrlInput);
+						bobCountInput.value = '4';
+						bobSizesInput.value = 'AUTO 10 - 12';
+						bobLengthsInput.value = 'auto, 250, -, 200';
+						applyBobCountFromUI();
+						const u = new URL(shareUrlInput.value);
+						eq(u.searchParams.get('sizes'), 'auto,10,-,12');
+						eq(u.searchParams.get('lengths'), 'auto,250,-,200');
+					});
+
 					testsText.textContent =
 						'Ready. Click Run to execute tests.';
 					runTestsBtn.addEventListener('click', () => {
@@ -2649,8 +2881,10 @@
 				}
 
 				resizeCanvas();
+				applyInputsFromQuery();
 				applyBobCountFromUI();
 				resetPeriodTracker();
+				updateShareUrlFromInputs();
 				draw();
 
 				requestAnimationFrame((t) => {
