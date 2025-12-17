@@ -103,6 +103,8 @@
 				display: block;
 				border-radius: 18px;
 				background: transparent;
+				touch-action: none;
+				-webkit-tap-highlight-color: transparent;
 				box-shadow:
 					0 0 0 1px rgba(255, 255, 255, 0.06),
 					0 18px 60px rgba(0, 0, 0, 0.55);
@@ -1397,7 +1399,10 @@
 						(Math.random() > 0.5 ? 1 : -1) * 0.32;
 				}
 
-				canvas.addEventListener('pointerdown', (e) => {
+				canvas.addEventListener(
+					'pointerdown',
+					(e) => {
+						e.preventDefault();
 					// Some environments can throw on pointer capture.
 					// It's optional here, so fail gracefully.
 					try {
@@ -1428,10 +1433,15 @@
 						origin
 					);
 					state.omega[hit] = 0;
-				});
+					},
+					{ passive: false }
+				);
 
-				canvas.addEventListener('pointermove', (e) => {
-					if (!state.dragging) return;
+				canvas.addEventListener(
+					'pointermove',
+					(e) => {
+						if (!state.dragging) return;
+						e.preventDefault();
 					const { pivot } = layout();
 					const { p } = forwardKinematics(
 						pivot,
@@ -1446,14 +1456,21 @@
 						origin
 					);
 					state.omega[idx] = 0;
-				});
+					},
+					{ passive: false }
+				);
 
-				function endDrag() {
+				function endDrag(e) {
+					if (e && typeof e.preventDefault === 'function') e.preventDefault();
 					state.dragging = false;
 				}
-				canvas.addEventListener('pointerup', endDrag);
-				canvas.addEventListener('pointercancel', endDrag);
-				canvas.addEventListener('lostpointercapture', endDrag);
+				canvas.addEventListener('pointerup', endDrag, { passive: false });
+				canvas.addEventListener('pointercancel', endDrag, { passive: false });
+				canvas.addEventListener(
+					'lostpointercapture',
+					endDrag,
+					{ passive: false }
+				);
 
 				// =============================================================
 				// Stats panel
