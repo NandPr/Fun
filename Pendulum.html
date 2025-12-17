@@ -1,0 +1,2072 @@
+<!-- ====================================================================
+	N-Bob Pendulum - Prabhu & GPT 5.2
+	Version: 1.3
+
+	What this file is
+	- A self-contained HTML/CSS/JS canvas simulation of an N-bob pendulum
+	  chain (1-10 bobs).
+	- Includes interactive controls (Inputs panel), a live per-bob stats
+	  readout (Stats panel), and a trail renderer.
+	- Everything lives in this one file: UI, physics integration, rendering,
+	  and pointer interaction.
+
+	How to use
+	- Drag any bob to set its angle (relative to its parent joint). Release
+	  to let it swing.
+	- Click empty space to "nudge" the system with a small impulse.
+	- Use Inputs -> Bobs to change the number of bobs.
+	- Use Inputs -> Sizes to override the visual radius of each bob (px),
+	  e.g. "20, 30, 10".
+	  - You can also use "auto" or "-" in a position to revert that bob
+	    to automatic sizing.
+	- Optional: add ?tests=1 to the URL to show a Tests panel and run the
+	  embedded unit tests (no external runner required).
+
+	High-level architecture
+	- State: angles (theta[]) and angular velocities (omega[]) per bob.
+	- Params: rod lengths, masses, damping, dt limits, trail length, and
+	  optional per-bob radius overrides.
+	- Physics:
+	  - Computes angular accelerations by building a dense linear system
+	    A*alpha=b and solving it each step.
+	  - Integrates the ODE using RK4 (Runge-Kutta 4) with sub-stepping.
+	- Rendering:
+	  - Canvas is full-viewport; each frame draws vignette, trails, rods,
+	    and bobs.
+	  - Trails are stored as per-bob point buffers.
+	- UI:
+	  - Two separate minimizable panels (Inputs and Stats), both collapsed
+	    by default.
+	  - Stats shows a table for every bob: angle, angular velocity, position,
+	    and speed.
+
+	Notes / tradeoffs
+	- This is a visualization-oriented simulation ("looks/feels" realistic)
+	  rather than a rigorously exact physical model; constants like gEff are
+	  tuned for pleasing motion at screen scale.
+	- To keep the UI responsive, matrix sizes are limited (N<=10) and the
+	  solver is a straightforward Gaussian elimination with pivoting.
+-->
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Pendulum</title>
+		<style>
+			/* Layout: full-viewport canvas */
+			/* plus a small HUD stack (Inputs + Stats). */
+			:root {
+				color-scheme: dark;
+			}
+
+			html,
+			body {
+				height: 100%;
+				margin: 0;
+			}
+
+			body {
+				font-family:
+					system-ui,
+					-apple-system,
+					Segoe UI,
+					Roboto,
+					Arial,
+					sans-serif;
+				background: radial-gradient(
+					1200px 800px at 50% 20%,
+					#1a2230 0%,
+					#0b0f14 55%,
+					#05070a 100%
+				);
+				overflow: hidden;
+			}
+
+			/* Canvas fills the viewport; JS sets backing resolution via DPR. */
+			.wrap {
+				position: fixed;
+				inset: 0;
+				padding: 10px;
+			}
+
+			canvas {
+				width: 100%;
+				height: 100%;
+				display: block;
+				border-radius: 18px;
+				background: linear-gradient(
+					180deg,
+					rgba(255, 255, 255, 0.04),
+					rgba(255, 255, 255, 0.015)
+				);
+				box-shadow:
+					0 0 0 1px rgba(255, 255, 255, 0.06),
+					0 18px 60px rgba(0, 0, 0, 0.55);
+			}
+
+			/* Hint pill at bottom; pointer-events disabled */
+			/* so it never blocks drag. */
+			.hint {
+				position: fixed;
+				left: 50%;
+				bottom: 12px;
+				transform: translateX(-50%);
+				font-size: 13px;
+				color: rgba(255, 255, 255, 0.65);
+				user-select: none;
+				pointer-events: none;
+				text-align: center;
+				padding: 8px 12px;
+				border-radius: 999px;
+				background: rgba(0, 0, 0, 0.25);
+				backdrop-filter: blur(10px);
+			}
+
+			/* HUD stack: top-left panels; canvas interaction still works. */
+			.hud {
+				position: fixed;
+				top: 12px;
+				left: 12px;
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				max-width: min(420px, calc(100vw - 24px));
+				pointer-events: none;
+			}
+
+			/* Shared panel styling for Inputs and Stats. */
+			.panel {
+				pointer-events: auto;
+				padding: 10px 12px;
+				border-radius: 12px;
+				background: rgba(0, 0, 0, 0.28);
+				backdrop-filter: blur(10px);
+				box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+				color: rgba(255, 255, 255, 0.78);
+				font-size: 12px;
+				line-height: 1.35;
+				user-select: text;
+			}
+
+			.panel .header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 10px;
+				margin-bottom: 6px;
+			}
+
+			.panel .title {
+				font-size: 12px;
+				letter-spacing: 0.06em;
+				text-transform: uppercase;
+				color: rgba(255, 255, 255, 0.62);
+				margin: 0;
+			}
+
+			.panel .minbtn {
+				user-select: none;
+				padding: 6px 10px;
+				border-radius: 10px;
+				border: 1px solid rgba(255, 255, 255, 0.10);
+				background: rgba(255, 255, 255, 0.07);
+				color: rgba(255, 255, 255, 0.85);
+				cursor: pointer;
+			}
+
+			.panel .minbtn:hover {
+				background: rgba(255, 255, 255, 0.10);
+			}
+
+			.panel .controls {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				margin: 0 0 8px;
+				flex-wrap: wrap;
+			}
+
+			.panel label {
+				color: rgba(255, 255, 255, 0.70);
+			}
+
+			.panel input[type='number'],
+			.panel input[type='text'] {
+				width: 72px;
+				padding: 6px 8px;
+				border-radius: 10px;
+				border: 1px solid rgba(255, 255, 255, 0.10);
+				background: rgba(255, 255, 255, 0.06);
+				color: rgba(255, 255, 255, 0.88);
+				outline: none;
+			}
+
+			.panel input[type='text'] {
+				width: 190px;
+			}
+
+			.panel button {
+				padding: 6px 10px;
+				border-radius: 10px;
+				border: 1px solid rgba(255, 255, 255, 0.10);
+				background: rgba(255, 255, 255, 0.07);
+				color: rgba(255, 255, 255, 0.85);
+				cursor: pointer;
+			}
+
+			.panel button:hover {
+				background: rgba(255, 255, 255, 0.10);
+			}
+
+			.panel pre {
+				margin: 0;
+				white-space: pre;
+				font-family:
+					ui-monospace,
+					SFMono-Regular,
+					Menlo,
+					Monaco,
+					Consolas,
+					"Liberation Mono",
+					"Courier New",
+					monospace;
+				color: rgba(255, 255, 255, 0.82);
+			}
+
+			/* Test output helpers (only visible in ?tests=1 mode). */
+			.test-pass {
+				color: #3fb950;
+			}
+
+			.test-fail {
+				color: #f85149;
+			}
+
+			.test-dim {
+				color: rgba(255, 255, 255, 0.55);
+			}
+
+			/* Stats coloring helpers (monospace output in the Stats panel). */
+			.stat-pos {
+				color: #3fb950;
+			}
+
+			.stat-neg {
+				color: #f85149;
+			}
+
+			.stat-hdr {
+				color: rgba(255, 255, 255, 0.62);
+			}
+
+			.stat-sel {
+				color: rgba(255, 255, 255, 0.92);
+			}
+
+			/* Keep Tests output from growing unbounded. */
+			#testsText {
+				max-height: 45vh;
+				overflow: auto;
+			}
+
+			/* Collapsed panels only show the header and toggle button. */
+			.panel.is-collapsed {
+				max-width: min(220px, calc(100vw - 24px));
+				padding-bottom: 8px;
+			}
+
+			.panel.is-collapsed .content {
+				display: none;
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				.hint::after {
+					content: " (reduced motion)";
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="wrap">
+			<canvas id="c"></canvas>
+		</div>
+		<!--
+			HUD = small overlay UI.
+			Both panels start collapsed; user can expand independently.
+			Inputs contains configurable parameters.
+			Stats contains the live readout.
+		-->
+		<div class="hud">
+			<div id="inputsPanel" class="panel is-collapsed">
+				<div class="header">
+					<div class="title">Inputs</div>
+					<button
+						id="toggleInputs"
+						class="minbtn"
+						type="button"
+						aria-expanded="false"
+					>
+						Show Inputs
+					</button>
+				</div>
+				<div class="content">
+					<div class="controls">
+						<label for="bobCount">Bobs</label>
+						<input
+							id="bobCount"
+							type="number"
+							min="1"
+							max="10"
+							step="1"
+							value="3"
+						/>
+						<label for="bobSizes">Sizes</label>
+						<input
+							id="bobSizes"
+							type="text"
+							inputmode="decimal"
+							value="20, 30, 10"
+							placeholder="e.g. 20,22,24 (px radius)"
+						/>
+						<button id="applyBobs" type="button">Apply</button>
+					</div>
+					<div class="test-dim">
+						Bobs: 1 to 10.
+						Sizes: comma-separated list (one per bob) of radius values
+						in pixels, e.g. "20, 30, 10". Use "auto" or "-" for a bob
+						to use automatic sizing. Numbers are clamped to 6 to 80.
+						Click Apply (or press Enter) to use your changes.
+					</div>
+				</div>
+			</div>
+			<div id="statsPanel" class="panel is-collapsed" aria-live="polite">
+				<div class="header">
+					<div class="title">Stats</div>
+					<button
+						id="toggleStats"
+						class="minbtn"
+						type="button"
+						aria-expanded="false"
+					>
+						Show Stats
+					</button>
+				</div>
+				<div class="content">
+					<pre id="statsText">Initializing...</pre>
+				</div>
+			</div>
+			<div
+				id="testsPanel"
+				class="panel is-collapsed"
+				hidden
+				aria-live="polite"
+			>
+				<div class="header">
+					<div class="title">Tests</div>
+					<button
+						id="toggleTests"
+						class="minbtn"
+						type="button"
+						aria-expanded="false"
+					>
+						Show Tests
+					</button>
+				</div>
+				<div class="content">
+					<div class="controls">
+						<button id="runTests" type="button">Run</button>
+					</div>
+					<pre id="testsText">Ready.</pre>
+				</div>
+			</div>
+		</div>
+		<div class="hint">
+			Drag a bob to set angles. Click to nudge. Trails show recent paths.
+		</div>
+
+		<script>
+			(() => {
+				// =============================================================
+				// DOM / UI wiring
+				//
+				// This demo is intended to be resilient even if a DOM element
+				// is missing (e.g., partial copy/paste, or an unsupported
+				// browser environment). We prefer to fail "softly": write an
+				// error to the Stats panel (if present) and stop.
+				// =============================================================
+				const statsText = document.getElementById('statsText');
+				const canvas = document.getElementById('c');
+				if (!canvas) {
+					if (statsText) {
+						statsText.textContent =
+							'Error: canvas element (#c) not found.';
+					}
+					return;
+				}
+				const ctx = canvas.getContext('2d');
+				if (!ctx) {
+					if (statsText) {
+						statsText.textContent =
+							'Error: Canvas 2D context not available.';
+					}
+					return;
+				}
+
+				const inputsPanel = document.getElementById('inputsPanel');
+				const toggleInputsBtn = document.getElementById('toggleInputs');
+				const statsPanel = document.getElementById('statsPanel');
+				const toggleStatsBtn = document.getElementById('toggleStats');
+				const testsPanel = document.getElementById('testsPanel');
+				const toggleTestsBtn = document.getElementById('toggleTests');
+				const runTestsBtn = document.getElementById('runTests');
+				const testsText = document.getElementById('testsText');
+				const bobCountInput = document.getElementById('bobCount');
+				const bobSizesInput = document.getElementById('bobSizes');
+				const applyBobsBtn = document.getElementById('applyBobs');
+
+				// ---------------------------------------------------------
+				// Test mode flag
+				//
+				// Unit tests are intentionally hidden in normal use.
+				// Add ?tests=1 to the URL to enable the Tests panel.
+				// ---------------------------------------------------------
+				const testsEnabled = (() => {
+					try {
+						const qs = new URLSearchParams(window.location.search);
+						return qs.get('tests') === '1';
+					} catch {
+						return false;
+					}
+				})();
+
+				// ---------------------------------------------------------
+				// Optional coverage counters (tests mode only)
+				//
+				// This is intentionally simple: function-level hit counts.
+				// We reset coverage at the start of a test run.
+				// ---------------------------------------------------------
+				let testsRunning = false;
+				const covKeys = [
+					'resizeCanvas',
+					'setBobCount',
+					'layout',
+					'solveLinearSystem',
+					'accelerations',
+					'deriv',
+					'rk4Step',
+					'forwardKinematics',
+					'clearTrails',
+					'pushTrail',
+					'drawTrail',
+					'draw',
+					'pointerToThetaFromPoint',
+					'hitTest',
+					'nudge',
+					'updateStats',
+					'tick',
+					'applyBobCountFromUI',
+				];
+				const cov = testsEnabled
+					? { keys: covKeys, hits: Object.create(null) }
+					: null;
+
+				function covHit(key) {
+					if (!cov) return;
+					cov.hits[key] = (cov.hits[key] || 0) + 1;
+				}
+
+				function covReset() {
+					if (!cov) return;
+					for (const k of cov.keys) delete cov.hits[k];
+				}
+
+				// -------------------------------------------------------------
+				// Collapsible panel helper
+				//
+				// - Controls a CSS class (.is-collapsed) which hides .content.
+				// - Updates button text for clarity.
+				// - Keeps aria-expanded in sync for assistive tech.
+				// -------------------------------------------------------------
+				function wireCollapsiblePanel(panelEl, buttonEl, label) {
+					if (!panelEl || !buttonEl) return () => {};
+					const setCollapsed = (collapsed) => {
+						panelEl.classList.toggle('is-collapsed', collapsed);
+						if (collapsed) {
+							buttonEl.textContent = `Show ${label}`;
+							buttonEl.setAttribute('aria-expanded', 'false');
+						} else {
+							buttonEl.textContent = `Minimize ${label}`;
+							buttonEl.setAttribute('aria-expanded', 'true');
+						}
+					};
+					buttonEl.addEventListener('click', () => {
+						const collapsedClass = 'is-collapsed';
+						const isCollapsed = panelEl.classList.contains(
+							collapsedClass
+						);
+						setCollapsed(!isCollapsed);
+					});
+					setCollapsed(true);
+					return setCollapsed;
+				}
+
+				const setInputsCollapsed = wireCollapsiblePanel(
+					inputsPanel,
+					toggleInputsBtn,
+					'Inputs'
+				);
+				const setStatsCollapsed = wireCollapsiblePanel(
+					statsPanel,
+					toggleStatsBtn,
+					'Stats'
+				);
+				let setTestsCollapsed = () => {};
+				if (testsPanel) {
+					testsPanel.hidden = !testsEnabled;
+					if (testsEnabled) {
+						setTestsCollapsed = wireCollapsiblePanel(
+							testsPanel,
+							toggleTestsBtn,
+							'Tests'
+						);
+					}
+				}
+
+				// Snapshot panel startup state for unit tests.
+				const panelStartup = testsEnabled
+					? {
+						inputsCollapsed:
+							inputsPanel?.classList.contains('is-collapsed') ??
+							false,
+						statsCollapsed:
+							statsPanel?.classList.contains('is-collapsed') ??
+							false,
+						testsCollapsed:
+							testsPanel?.classList.contains('is-collapsed') ??
+							false,
+					}
+					: null;
+
+				// -------------------------------------------------------------
+				// Accessibility / performance switches
+				//
+				// If the user prefers reduced motion, keep the app responsive
+				// but skip physics integration and trail accumulation.
+				// -------------------------------------------------------------
+				const reducedMotionQuery = '(prefers-reduced-motion: reduce)';
+				const prefersReducedMotion =
+					window.matchMedia?.(reducedMotionQuery)?.matches ?? false;
+				const TAU = Math.PI * 2;
+
+				// ===== Small math helpers =====
+				function clamp(v, a, b) {
+					return Math.max(a, Math.min(b, v));
+				}
+
+				function radToDeg(r) {
+					return (r * 180) / Math.PI;
+				}
+
+				function fmt(n, digits = 2) {
+					if (!Number.isFinite(n)) return '—';
+					return n.toFixed(digits);
+				}
+
+				// -------------------------------------------------------------
+				// Canvas sizing
+				//
+				// The canvas is styled in CSS; to avoid blur, set its
+				// backing buffer size in device pixels (DPR-aware), then scale
+				// drawing coordinates back to CSS pixels.
+				// -------------------------------------------------------------
+				function resizeCanvas() {
+					covHit('resizeCanvas');
+					const dpr = Math.max(
+						1,
+						Math.min(2, window.devicePixelRatio || 1)
+					);
+					const rect = canvas.getBoundingClientRect();
+					canvas.width = Math.floor(rect.width * dpr);
+					canvas.height = Math.floor(rect.height * dpr);
+					ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+				}
+
+				// =============================================================
+				// Simulation state
+				// =============================================================
+				// Angles are measured from vertical;
+				// positive rotates to the right.
+				const state = {
+					count: 3,
+					theta: [0.95, 1.20, 1.45],
+					omega: [0.0, 0.0, 0.0],
+					dragging: false,
+					dragIndex: 2,
+					lastT: performance.now(),
+				};
+
+				// =============================================================
+				// Tunable parameters
+				// =============================================================
+				// Note: `g` is used only to compute a screen-scaled gEff.
+				const params = {
+					g: 9.81,
+					lengths: [260, 220, 200],
+					masses: [1.0, 1.0, 1.0],
+					damping: [0.01, 0.012, 0.012],
+					// Optional per-bob radius overrides (px).
+					// Use null for auto.
+					radiusOverrides: [20, 30, 10],
+					maxStep: 1 / 90,
+					trailLen: 220,
+				};
+
+				// Snapshot file defaults for tests.
+				// This makes tests robust even if the user edits Inputs
+				// before clicking Run.
+				const defaults = testsEnabled
+					? {
+						bobCountAttr:
+							bobCountInput?.getAttribute('value') ?? '',
+						bobSizesAttr:
+							bobSizesInput?.getAttribute('value') ?? '',
+						radiusOverrides: params.radiusOverrides.slice(),
+					}
+					: null;
+
+				let trails = Array.from({ length: state.count }, () => []);
+
+				// -------------------------------------------------------------
+				// State resizing
+				//
+				// When changing bob count N:
+				// - Keep previous angles/velocities where possible.
+				// - Resize parameter arrays (lengths, masses, damping, radii).
+				// - Reset trails (old ones mismatch new geometry).
+				// -------------------------------------------------------------
+				function setBobCount(nextCount) {
+					covHit('setBobCount');
+					let n = Math.trunc(nextCount);
+					if (!Number.isFinite(n)) n = state.count;
+					n = clamp(n, 1, 10);
+					const prevTheta = state.theta;
+					const prevOmega = state.omega;
+					const prevR = params.radiusOverrides;
+					state.count = n;
+
+					state.theta = new Array(n);
+					state.omega = new Array(n);
+					for (let i = 0; i < n; i++) {
+						state.theta[i] = prevTheta[i] ?? (0.75 + 0.18 * i);
+						state.omega[i] = prevOmega[i] ?? 0.0;
+					}
+
+					params.lengths = new Array(n).fill(200);
+					params.masses = new Array(n).fill(1.0);
+					params.damping = new Array(n).fill(0.012);
+					params.damping[0] = 0.01;
+					params.radiusOverrides = new Array(n);
+					for (let i = 0; i < n; i++) {
+						params.radiusOverrides[i] = prevR[i] ?? null;
+					}
+
+					state.dragIndex = clamp(state.dragIndex, 0, n - 1);
+					trails = Array.from({ length: n }, () => []);
+				}
+
+				// =============================================================
+				// Layout (screen-space)
+				// =============================================================
+				// Computes pivot + bob radii;
+				// also updates rod lengths from viewport.
+				//
+				// IMPORTANT: layout() has a deliberate side-effect:
+				// it updates params.lengths[] each call based on the current
+				// viewport. This keeps the visual system scaled to the window.
+				function layout() {
+					covHit('layout');
+					const rect = canvas.getBoundingClientRect();
+					const w = rect.width;
+					const h = rect.height;
+
+					const pivot = {
+						x: w * 0.5,
+						y: h * 0.22,
+					};
+
+					const n = state.count;
+					const totalLen = Math.min(h * 0.62, w * 0.50);
+					const base = clamp(
+						(totalLen / Math.max(1, n)) * 0.92,
+						80,
+						260
+					);
+					for (let i = 0; i < n; i++) {
+						params.lengths[i] = base * (1 - 0.03 * i);
+					}
+
+					const bobRadiusAuto = (i) =>
+						clamp(
+							params.lengths[i] *
+								(0.10 + 0.015 * Math.min(4, i)),
+							14,
+							42
+						);
+					const bobRadius = (i) => {
+						const r = params.radiusOverrides[i];
+						if (Number.isFinite(r) && r > 0) return clamp(r, 6, 80);
+						return bobRadiusAuto(i);
+					};
+					return { w, h, pivot, bobRadius };
+				}
+
+				// =============================================================
+				// Linear algebra (small dense solver)
+				// =============================================================
+				// Solves A*x=b via Gaussian elimination with partial pivoting.
+				//
+				// Notes:
+				// - Operates on copies of A and b to avoid mutating inputs.
+				// - Returns a zero vector if the matrix is near-singular.
+				function solveLinearSystem(A, b) {
+					covHit('solveLinearSystem');
+					const n = b.length;
+					const M = A.map((row) => row.slice());
+					const x = b.slice();
+
+					for (let col = 0; col < n; col++) {
+						let pivot = col;
+						let maxAbs = Math.abs(M[col][col]);
+						for (let r = col + 1; r < n; r++) {
+							const v = Math.abs(M[r][col]);
+							if (v > maxAbs) {
+								maxAbs = v;
+								pivot = r;
+							}
+						}
+						if (maxAbs < 1e-12) return new Array(n).fill(0);
+
+						if (pivot !== col) {
+							const tmpRow = M[col];
+							M[col] = M[pivot];
+							M[pivot] = tmpRow;
+							const tmpB = x[col];
+							x[col] = x[pivot];
+							x[pivot] = tmpB;
+						}
+
+						const diag = M[col][col];
+						for (let c = col; c < n; c++) M[col][c] /= diag;
+						x[col] /= diag;
+
+						for (let r = col + 1; r < n; r++) {
+							const factor = M[r][col];
+							if (factor === 0) continue;
+							for (let c = col; c < n; c++) {
+								M[r][c] -= factor * M[col][c];
+							}
+							x[r] -= factor * x[col];
+						}
+					}
+
+					for (let r = n - 1; r >= 0; r--) {
+						for (let c = r + 1; c < n; c++) x[r] -= M[r][c] * x[c];
+					}
+					return x;
+				}
+
+				// =============================================================
+				// Physics model (approximate chain dynamics)
+				// =============================================================
+				// Computes angular accelerations for the chain
+				// given (theta, omega).
+				// Builds dense system A*alpha=b where alpha
+				// is angular acceleration.
+				// Additional notes:
+				// - Mtail[i] is total mass below joint i (inclusive);
+				//   used to approximate coupling.
+				// - gEff is an *effective* gravity scaled for screen-space.
+				// - Damping is per-joint and acts like angular drag.
+				function accelerations(theta, omega) {
+					covHit('accelerations');
+					const n = theta.length;
+					const l = params.lengths;
+					const m = params.masses;
+					const d = params.damping;
+
+					const Mtail = new Array(n);
+					let accMass = 0;
+					for (let i = n - 1; i >= 0; i--) {
+						accMass += m[i];
+						Mtail[i] = accMass;
+					}
+
+					const A = Array.from({ length: n }, () => {
+						return new Array(n).fill(0);
+					});
+					const b = new Array(n).fill(0);
+					const gEff = params.g * 110;
+
+					for (let i = 0; i < n; i++) {
+						b[i] =
+							-gEff *
+							Mtail[i] *
+							l[i] *
+							Math.sin(theta[i]) -
+							d[i] *
+							omega[i];
+						for (let j = 0; j < n; j++) {
+							const k = Math.max(i, j);
+							const Mmax = Mtail[k];
+							A[i][j] =
+								Mmax *
+								l[i] *
+								l[j] *
+								Math.cos(theta[i] - theta[j]);
+							b[i] +=
+								-Mmax *
+								l[i] *
+								l[j] *
+								Math.sin(theta[i] - theta[j]) *
+								(omega[j] * omega[j]);
+						}
+					}
+
+					return solveLinearSystem(A, b);
+				}
+
+				// Packs/unpacks the state vector for the integrator:
+				// y=[theta..., omega...]
+				function deriv(y) {
+					covHit('deriv');
+					const n = state.count;
+					const theta = y.slice(0, n);
+					const omega = y.slice(n, 2 * n);
+					const alpha = accelerations(theta, omega);
+					return omega.concat(alpha);
+				}
+
+				// -------------------------------------------------------------
+				// RK4 integration
+				//
+				// Uses a fixed-step RK4 with optional sub-stepping (in tick())
+				// to keep the simulation stable under variable frame times.
+				// -------------------------------------------------------------
+				function rk4Step(y, dt) {
+					covHit('rk4Step');
+					const k1 = deriv(y);
+					const y2 = y.map((v, i) => v + 0.5 * dt * k1[i]);
+					const k2 = deriv(y2);
+					const y3 = y.map((v, i) => v + 0.5 * dt * k2[i]);
+					const k3 = deriv(y3);
+					const y4 = y.map((v, i) => v + dt * k3[i]);
+					const k4 = deriv(y4);
+					return y.map((v, i) => {
+						return (
+							v +
+							(dt / 6) *
+								(k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i])
+						);
+					});
+				}
+
+				// =============================================================
+				// Kinematics
+				// =============================================================
+				// Converts angles/velocities into Cartesian
+				// positions and velocities.
+				function forwardKinematics(pivot, theta, omega) {
+					covHit('forwardKinematics');
+					const n = theta.length;
+					const p = new Array(n);
+					const v = new Array(n);
+					let prevP = { x: pivot.x, y: pivot.y };
+					let prevV = { x: 0, y: 0 };
+
+					for (let i = 0; i < n; i++) {
+						const Li = params.lengths[i];
+						const ti = theta[i];
+						const wi = omega[i];
+
+						const pi = {
+							x: prevP.x + Li * Math.sin(ti),
+							y: prevP.y + Li * Math.cos(ti),
+						};
+
+						const vRel = {
+							x: Li * Math.cos(ti) * wi,
+							y: -Li * Math.sin(ti) * wi,
+						};
+
+						const vi = { x: prevV.x + vRel.x, y: prevV.y + vRel.y };
+						p[i] = pi;
+						v[i] = vi;
+						prevP = pi;
+						prevV = vi;
+					}
+
+					return { p, v };
+				}
+
+				// =============================================================
+				// Trails
+				// =============================================================
+				// Each bob has its own polyline of recent positions.
+				// Trails are truncated to params.trailLen points.
+				function clearTrails() {
+					covHit('clearTrails');
+					for (const t of trails) t.length = 0;
+				}
+
+				function pushTrail(index, point) {
+					covHit('pushTrail');
+					const arr = trails[index];
+					arr.push(point);
+					const extra = arr.length - params.trailLen;
+					if (extra > 0) arr.splice(0, extra);
+				}
+
+				function drawTrail(points, hue) {
+					covHit('drawTrail');
+					if (points.length < 2) return;
+					ctx.lineCap = 'round';
+					ctx.lineJoin = 'round';
+					ctx.lineWidth = 2;
+
+					for (let i = 1; i < points.length; i++) {
+						const t = i / (points.length - 1);
+						const a = 0.02 + 0.50 * t * t;
+						ctx.strokeStyle = `hsla(${hue}, 85%, 72%, ${a})`;
+						ctx.beginPath();
+						ctx.moveTo(points[i - 1].x, points[i - 1].y);
+						ctx.lineTo(points[i].x, points[i].y);
+						ctx.stroke();
+					}
+				}
+
+				// =============================================================
+				// Rendering
+				// =============================================================
+				// Rendering order each frame:
+				// 1) background vignette
+				// 2) trails
+				// 3) rod segments
+				// 4) pivot cap + bobs
+				function draw() {
+					covHit('draw');
+					const { pivot, bobRadius, w, h } = layout();
+					ctx.clearRect(0, 0, w, h);
+
+					const vignette = ctx.createRadialGradient(
+						w * 0.5,
+						h * 0.45,
+						Math.min(w, h) * 0.1,
+						w * 0.5,
+						h * 0.45,
+						Math.max(w, h) * 0.7
+					);
+					vignette.addColorStop(0, 'rgba(0,0,0,0)');
+					vignette.addColorStop(1, 'rgba(0,0,0,0.35)');
+					ctx.fillStyle = vignette;
+					ctx.fillRect(0, 0, w, h);
+
+					const { p: positions } = forwardKinematics(
+						pivot,
+						state.theta,
+						state.omega
+					);
+					for (let i = 0; i < trails.length; i++) {
+						drawTrail(trails[i], 200 + i * 35);
+					}
+
+					const lastIdx = positions.length - 1;
+					const last = positions[lastIdx];
+					const lastR = bobRadius(lastIdx);
+					const totalLen = params.lengths.reduce((a, b) => a + b, 0);
+
+					const shadowY = pivot.y + totalLen + lastR * 0.9;
+					const shadowW = lastR * 3.0;
+					const shadowH = lastR * 0.78;
+					const shadow = ctx.createRadialGradient(
+						last.x,
+						shadowY,
+						4,
+						last.x,
+						shadowY,
+						shadowW
+					);
+					shadow.addColorStop(0, 'rgba(0,0,0,0.35)');
+					shadow.addColorStop(1, 'rgba(0,0,0,0)');
+					ctx.fillStyle = shadow;
+					ctx.beginPath();
+					ctx.ellipse(last.x, shadowY, shadowW, shadowH, 0, 0, TAU);
+					ctx.fill();
+
+					ctx.lineCap = 'round';
+					ctx.strokeStyle = 'rgba(240, 245, 255, 0.75)';
+					ctx.lineWidth = Math.max(2, lastR * 0.16);
+					ctx.beginPath();
+					ctx.moveTo(pivot.x, pivot.y);
+					for (let i = 0; i < positions.length; i++) {
+						ctx.lineTo(positions[i].x, positions[i].y);
+					}
+					ctx.stroke();
+
+					const capR = lastR * 0.22;
+					const cap = ctx.createRadialGradient(
+						pivot.x - capR * 0.25,
+						pivot.y - capR * 0.25,
+						1,
+						pivot.x,
+						pivot.y,
+						capR * 1.6
+					);
+					cap.addColorStop(0, 'rgba(255,255,255,0.9)');
+					cap.addColorStop(1, 'rgba(120,140,170,0.55)');
+					ctx.fillStyle = cap;
+					ctx.beginPath();
+					ctx.arc(pivot.x, pivot.y, capR, 0, TAU);
+					ctx.fill();
+					ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+					ctx.lineWidth = 1;
+					ctx.stroke();
+
+					function drawBob(x, y, r, hue) {
+						const gx = x - r * 0.35;
+						const gy = y - r * 0.45;
+						const grad = ctx.createRadialGradient(
+							gx,
+							gy,
+							r * 0.2,
+							x,
+							y,
+							r * 1.35
+						);
+						grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+						grad.addColorStop(0.18, `hsla(${hue}, 85%, 72%, 0.92)`);
+						grad.addColorStop(0.55, 'rgba(120,150,190,0.75)');
+						grad.addColorStop(1, 'rgba(35,55,85,0.88)');
+
+						ctx.fillStyle = grad;
+						ctx.beginPath();
+						ctx.arc(x, y, r, 0, TAU);
+						ctx.fill();
+
+						ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+						ctx.lineWidth = 1;
+						ctx.stroke();
+
+						ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+						ctx.lineWidth = 2;
+						ctx.beginPath();
+						ctx.arc(x, y, r * 0.72, 0.2, 1.6);
+						ctx.stroke();
+					}
+
+					for (let i = 0; i < positions.length; i++) {
+						drawBob(
+							positions[i].x,
+							positions[i].y,
+							bobRadius(i),
+							200 + i * 35
+						);
+					}
+
+					ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+					ctx.lineWidth = 1;
+					ctx.beginPath();
+					ctx.moveTo(w * 0.1, shadowY + lastR * 0.85);
+					ctx.lineTo(w * 0.9, shadowY + lastR * 0.85);
+					ctx.stroke();
+				}
+
+				// =============================================================
+				// Interaction
+				// =============================================================
+				// Convert pointer coordinates into an angle
+				// relative to a joint origin.
+				function pointerToThetaFromPoint(clientX, clientY, origin) {
+					covHit('pointerToThetaFromPoint');
+					const rect = canvas.getBoundingClientRect();
+					const x = clientX - rect.left;
+					const y = clientY - rect.top;
+					const dx = x - origin.x;
+					const dy = y - origin.y;
+					let theta = Math.atan2(dx, dy);
+					theta = clamp(theta, -Math.PI * 0.95, Math.PI * 0.95);
+					return theta;
+				}
+
+				// Returns the topmost bob index under the pointer,
+				// or -1 if none.
+				function hitTest(clientX, clientY) {
+					covHit('hitTest');
+					const { pivot, bobRadius } = layout();
+					const rect = canvas.getBoundingClientRect();
+					const x = clientX - rect.left;
+					const y = clientY - rect.top;
+					const { p } = forwardKinematics(
+						pivot,
+						state.theta,
+						state.omega
+					);
+
+					for (let i = p.length - 1; i >= 0; i--) {
+						const dx = x - p[i].x;
+						const dy = y - p[i].y;
+						const r = bobRadius(i);
+						if (dx * dx + dy * dy <= (r * 1.4) ** 2) return i;
+					}
+					return -1;
+				}
+
+				// -------------------------------------------------------------
+				// Input affordance: "nudge" on empty click
+				//
+				// Adds a small random angular velocity to start motion.
+				// Corner case: for N=1 we must not apply two impulses to the
+				// same bob (first and last are the same index).
+				// -------------------------------------------------------------
+				function nudge() {
+					covHit('nudge');
+					if (state.count <= 0) return;
+					if (state.count === 1) {
+						state.omega[0] +=
+							(Math.random() > 0.5 ? 1 : -1) * 0.28;
+						return;
+					}
+					state.omega[0] += (Math.random() > 0.5 ? 1 : -1) * 0.18;
+					state.omega[state.count - 1] +=
+						(Math.random() > 0.5 ? 1 : -1) * 0.32;
+				}
+
+				canvas.addEventListener('pointerdown', (e) => {
+					// Some environments can throw on pointer capture.
+					// It's optional here, so fail gracefully.
+					try {
+						canvas.setPointerCapture(e.pointerId);
+					} catch {
+						// no-op
+					}
+					const hit = hitTest(e.clientX, e.clientY);
+					if (hit < 0) {
+						nudge();
+						return;
+					}
+
+					state.dragging = true;
+					state.dragIndex = hit;
+					clearTrails();
+
+					const { pivot } = layout();
+					const { p } = forwardKinematics(
+						pivot,
+						state.theta,
+						state.omega
+					);
+					const origin = hit === 0 ? pivot : p[hit - 1];
+					state.theta[hit] = pointerToThetaFromPoint(
+						e.clientX,
+						e.clientY,
+						origin
+					);
+					state.omega[hit] = 0;
+				});
+
+				canvas.addEventListener('pointermove', (e) => {
+					if (!state.dragging) return;
+					const { pivot } = layout();
+					const { p } = forwardKinematics(
+						pivot,
+						state.theta,
+						state.omega
+					);
+					const idx = clamp(state.dragIndex, 0, state.count - 1);
+					const origin = idx === 0 ? pivot : p[idx - 1];
+					state.theta[idx] = pointerToThetaFromPoint(
+						e.clientX,
+						e.clientY,
+						origin
+					);
+					state.omega[idx] = 0;
+				});
+
+				function endDrag() {
+					state.dragging = false;
+				}
+				canvas.addEventListener('pointerup', endDrag);
+				canvas.addEventListener('pointercancel', endDrag);
+				canvas.addEventListener('lostpointercapture', endDrag);
+
+				// =============================================================
+				// Stats panel
+				// =============================================================
+				// Builds a monospaced table including all bobs.
+				// Notes:
+				// - "selected" is the last dragged bob index.
+				// - Energy numbers are display-only and use gEff.
+				function updateStats(dtRaw) {
+					covHit('updateStats');
+					if (!statsText) return;
+					const { pivot } = layout();
+					const { p, v } = forwardKinematics(
+						pivot,
+						state.theta,
+						state.omega
+					);
+					const gEff = params.g * 110;
+
+					function span(cls, text) {
+						return `<span class="${cls}">${text}</span>`;
+					}
+
+					function clsForSign(x) {
+						if (!Number.isFinite(x)) return 'test-dim';
+						if (x > 1e-6) return 'stat-pos';
+						if (x < -1e-6) return 'stat-neg';
+						return 'test-dim';
+					}
+
+					let ke = 0;
+					let pe = 0;
+					let maxSpeed = 0;
+					for (let i = 0; i < state.count; i++) {
+						const speed = Math.hypot(v[i].x, v[i].y);
+						maxSpeed = Math.max(maxSpeed, speed);
+						ke += 0.5 * params.masses[i] * speed * speed;
+						const yUp = -(p[i].y - pivot.y);
+						pe += params.masses[i] * gEff * yUp;
+					}
+
+					const lastIdx = state.count - 1;
+					const idx = clamp(state.dragIndex, 0, lastIdx);
+
+					let lines = '';
+					lines += span(
+						'stat-hdr',
+						`N=${state.count}  selected=#${idx + 1}  ` +
+							`gEff=${fmt(gEff, 0)}  ` +
+							`dt=${fmt(dtRaw * 1000, 1)} ms`
+					);
+					lines += `\n\n`;
+					lines += span(
+						'stat-hdr',
+						`#  theta(deg)  omega(rad/s)  ` +
+							`x(px)  y(px)  |v|(px/s)`
+					);
+					lines += `\n`;
+					for (let i = 0; i < state.count; i++) {
+						const deg = radToDeg(state.theta[i]);
+						const speed = Math.hypot(v[i].x, v[i].y);
+						const mark = i === idx ? '*' : ' ';
+						const colIdx = `${mark}${String(i + 1).padStart(2)}`;
+						const colTheta = fmt(deg, 1).padStart(7);
+						const colOmega = fmt(state.omega[i], 3).padStart(9);
+						const colX = fmt(p[i].x, 1).padStart(8);
+						const colY = fmt(p[i].y, 1).padStart(8);
+						const colV = fmt(speed, 1).padStart(10);
+
+						const idxCls = i === idx ? 'stat-sel' : 'test-dim';
+						const tCls = clsForSign(deg);
+						const wCls = clsForSign(state.omega[i]);
+						let vCls = '';
+						if (maxSpeed > 0) {
+							const r = speed / maxSpeed;
+							vCls = r >= 0.66 ? 'stat-pos' : r <= 0.33
+								? 'test-dim'
+								: '';
+						}
+
+						lines += span(idxCls, colIdx);
+						lines += `  `;
+						lines += span(tCls, colTheta);
+						lines += `  `;
+						lines += span(wCls, colOmega);
+						lines += `  `;
+						lines += colX;
+						lines += `  `;
+						lines += colY;
+						lines += `  `;
+						lines += vCls ? span(vCls, colV) : colV;
+						lines += `\n`;
+					}
+					lines += `\n`;
+					lines += span('stat-hdr', 'Energy (display units)');
+					lines += `\n`;
+					lines += `  `;
+					lines += span('test-dim', 'KE=');
+					lines += fmt(ke, 0);
+					lines += `  `;
+					lines += span('test-dim', 'PE=');
+					lines += fmt(pe, 0);
+					lines += `  `;
+					lines += span('test-dim', 'E=');
+					lines += fmt(ke + pe, 0);
+
+					statsText.innerHTML = lines;
+				}
+
+				window.addEventListener('resize', () => {
+					resizeCanvas();
+					draw();
+				});
+
+				// =============================================================
+				// Main loop
+				// =============================================================
+				// Advances simulation, updates trails, updates stats,
+				// and draws.
+				function tick(now) {
+					covHit('tick');
+					if (testsEnabled && testsRunning) {
+						requestAnimationFrame(tick);
+						return;
+					}
+					const dtRaw = (now - state.lastT) / 1000;
+					state.lastT = now;
+
+					if (!prefersReducedMotion && !state.dragging) {
+						const dt = clamp(dtRaw, 0, 1 / 15);
+						const steps = Math.max(
+							1,
+							Math.ceil(dt / params.maxStep)
+						);
+						const h = dt / steps;
+
+						for (let i = 0; i < steps; i++) {
+							const n = state.count;
+							const y = state.theta.concat(state.omega);
+							const next = rk4Step(y, h);
+							state.theta = next.slice(0, n);
+							state.omega = next.slice(n, 2 * n);
+							for (let k = 0; k < n; k++) {
+								if (state.theta[k] > Math.PI) {
+									state.theta[k] -= TAU;
+								}
+								if (state.theta[k] < -Math.PI) {
+									state.theta[k] += TAU;
+								}
+							}
+						}
+					}
+
+					if (!prefersReducedMotion) {
+						const { pivot } = layout();
+						const { p } = forwardKinematics(
+							pivot,
+							state.theta,
+							state.omega
+						);
+						for (let i = 0; i < p.length; i++) {
+							pushTrail(i, p[i]);
+						}
+					}
+
+					updateStats(dtRaw);
+					draw();
+					requestAnimationFrame(tick);
+				}
+
+				// =============================================================
+				// Inputs panel
+				// =============================================================
+				// Applies bob count + size overrides from the UI.
+				// Parsing rules for Bobs:
+				// - Integer clamped to [1,10].
+				// - Missing/invalid value keeps the current N.
+				// Parsing rules for Sizes:
+				// - Comma/space separated list, in px.
+				// - Missing entries fall back to auto (null).
+				// - "auto" or "-" explicitly selects auto for that bob.
+				function applyBobCountFromUI() {
+					covHit('applyBobCountFromUI');
+					const raw = (bobCountInput?.value ?? '').trim();
+					const parsed = Number.parseInt(raw, 10);
+					const n = Number.isFinite(parsed)
+						? clamp(parsed, 1, 10)
+						: state.count;
+					setBobCount(n);
+
+					const text = (bobSizesInput?.value ?? '').trim();
+					if (text.length === 0) {
+						params.radiusOverrides = new Array(state.count);
+						params.radiusOverrides.fill(null);
+					} else {
+						const parts = text
+							.split(/[\s,]+/)
+							.map((s) => s.trim())
+							.filter(Boolean);
+						const next = new Array(state.count).fill(null);
+						const take = Math.min(parts.length, state.count);
+						for (let i = 0; i < take; i++) {
+							const token = parts[i].toLowerCase();
+							if (token === 'auto' || token === '-') {
+								next[i] = null;
+								continue;
+							}
+							const r = Number.parseFloat(token);
+							if (Number.isFinite(r) && r > 0) {
+								next[i] = clamp(r, 6, 80);
+							}
+						}
+						params.radiusOverrides = next;
+					}
+
+					clearTrails();
+					state.dragging = false;
+					state.dragIndex = clamp(
+						state.dragIndex,
+						0,
+						state.count - 1
+					);
+					updateStats(0);
+					draw();
+				}
+
+				// Wire UI events.
+				applyBobsBtn?.addEventListener('click', applyBobCountFromUI);
+				bobCountInput?.addEventListener('keydown', (e) => {
+					if (e.key === 'Enter') applyBobCountFromUI();
+				});
+				bobSizesInput?.addEventListener('keydown', (e) => {
+					if (e.key === 'Enter') applyBobCountFromUI();
+				});
+
+				// =========================================================
+				// Unit tests (optional)
+				// =========================================================
+				// This file is a self-contained demo, so the test harness is
+				// also self-contained.
+				//
+				// Requirements:
+				// - Tests panel only visible with ?tests=1.
+				// - A Run button runs all tests and prints results.
+				// - Normal use should not pay the test cost.
+				if (testsEnabled && runTestsBtn && testsText) {
+					const unitTests = [];
+					let outHtml = '';
+
+					function test(name, fn) {
+						unitTests.push({
+							num: unitTests.length + 1,
+							name,
+							fn,
+						});
+					}
+
+					function escapeHtml(s) {
+						return String(s)
+							.replaceAll('&', '&amp;')
+							.replaceAll('<', '&lt;')
+							.replaceAll('>', '&gt;');
+					}
+
+					function fail(msg) {
+						throw new Error(msg);
+					}
+
+					function assert(cond, msg = 'assertion failed') {
+						if (!cond) fail(msg);
+					}
+
+					function eq(actual, expected, msg = 'not equal') {
+						if (actual !== expected) {
+							fail(`${msg}: ${actual} !== ${expected}`);
+						}
+					}
+
+					function approx(actual, expected, eps = 1e-6) {
+						const ok = Math.abs(actual - expected) <= eps;
+						if (!ok) {
+							fail(`approx: ${actual} !~= ${expected}`);
+						}
+					}
+
+					function snapshot() {
+						return {
+							state: {
+								count: state.count,
+								theta: state.theta.slice(),
+								omega: state.omega.slice(),
+								dragging: state.dragging,
+								dragIndex: state.dragIndex,
+								lastT: state.lastT,
+							},
+							params: {
+								g: params.g,
+								lengths: params.lengths.slice(),
+								masses: params.masses.slice(),
+								damping: params.damping.slice(),
+								radiusOverrides: params.radiusOverrides.slice(),
+								maxStep: params.maxStep,
+								trailLen: params.trailLen,
+							},
+							trails: trails.map((t) =>
+								t.map((p) => ({ x: p.x, y: p.y }))
+							),
+						};
+					}
+
+					function restore(s) {
+						state.count = s.state.count;
+						state.theta = s.state.theta.slice();
+						state.omega = s.state.omega.slice();
+						state.dragging = s.state.dragging;
+						state.dragIndex = s.state.dragIndex;
+						state.lastT = s.state.lastT;
+						params.g = s.params.g;
+						params.lengths = s.params.lengths.slice();
+						params.masses = s.params.masses.slice();
+						params.damping = s.params.damping.slice();
+						params.radiusOverrides =
+							s.params.radiusOverrides.slice();
+						params.maxStep = s.params.maxStep;
+						params.trailLen = s.params.trailLen;
+						trails = s.trails.map((t) =>
+							t.map((p) => ({ x: p.x, y: p.y }))
+						);
+					}
+
+					function showText(line) {
+						outHtml += `${escapeHtml(line)}\n`;
+						testsText.innerHTML = outHtml;
+					}
+
+					function showHtml(lineHtml) {
+						outHtml += `${lineHtml}\n`;
+						testsText.innerHTML = outHtml;
+					}
+
+					async function runAllTests() {
+						runTestsBtn.disabled = true;
+						testsRunning = true;
+						covReset();
+						// Ensure the main loop is counted in coverage.
+						// RAF won't run until we yield, so invoke
+						// tick() once under snapshot/restore.
+						{
+							const pre = snapshot();
+							testsRunning = false;
+							tick(performance.now());
+							testsRunning = true;
+							restore(pre);
+						}
+						const t0 = performance.now();
+						let pass = 0;
+						let failCount = 0;
+						const numWidth = String(unitTests.length).length;
+						outHtml = '';
+						showText(`Running ${unitTests.length} tests...`);
+						showText('');
+
+						for (const tc of unitTests) {
+							const num = String(tc.num).padStart(numWidth, '0');
+							const snap = snapshot();
+							const a0 = performance.now();
+							try {
+								const r = tc.fn();
+								if (r && typeof r.then === 'function') await r;
+								const ms = performance.now() - a0;
+								pass++;
+								showHtml(
+									`<span class="test-dim">[${num}]</span> ` +
+										`<span class="test-pass">[PASS]</span> ` +
+										`${escapeHtml(tc.name)} ` +
+										`<span class="test-dim">` +
+											`(${fmt(ms, 1)} ms)</span>`
+								);
+							} catch (e) {
+								const ms = performance.now() - a0;
+								failCount++;
+								showHtml(
+									`<span class="test-dim">[${num}]</span> ` +
+										`<span class="test-fail">[FAIL]</span> ` +
+										`${escapeHtml(tc.name)} ` +
+										`<span class="test-dim">` +
+											`(${fmt(ms, 1)} ms)</span>`
+								);
+								showText(`  ${String(e?.message || e)}`);
+							} finally {
+								restore(snap);
+							}
+						}
+
+						const totalMs = performance.now() - t0;
+						showText('');
+						showText(
+							`Summary: ${pass}/${unitTests.length} passed, ` +
+								`${failCount} failed ` +
+								`(${fmt(totalMs, 1)} ms)`
+						);
+
+						if (cov) {
+							const total = cov.keys.length;
+							const hit = cov.keys.filter(
+								(k) => (cov.hits[k] || 0) > 0
+							);
+							const pct = Math.round((hit.length / total) * 100);
+							showText('');
+							showText(
+								`Coverage: ${hit.length}/${total} (${pct}%)`
+							);
+							for (const k of cov.keys) {
+								const c = cov.hits[k] || 0;
+								const cls = c > 0 ? 'test-pass' : 'test-fail';
+								const tag = c > 0 ? 'HIT ' : 'MISS';
+								showHtml(
+									`<span class="${cls}">` +
+										`[${tag}]</span> ` +
+										`${escapeHtml(k)} ` +
+										`<span class="test-dim">` +
+											`(${c})</span>`
+								);
+							}
+						}
+
+						testsRunning = false;
+						// After a run, focus the UI on the results.
+						setInputsCollapsed(true);
+						setStatsCollapsed(true);
+						setTestsCollapsed(false);
+						runTestsBtn.disabled = false;
+					}
+
+					// ---------------------
+					// Test cases
+					// ---------------------
+					// Test case catalog (in order):
+					//  1) HTML core elements exist: required DOM nodes exist.
+					//  2) Panels start collapsed: startup UI is minimized.
+					//  3) Collapsed content is display:none: CSS collapse works.
+					//  4) Expand shows content: expanding restores display:block.
+					//  5) Body overflow hidden: no scrollbars during use.
+					//  6) Canvas has nonzero size: viewport layout is wired.
+					//  7) Default bob sizes are 20,30,10: defaults stay stable.
+					//  8) resizeCanvas sets backing size: DPR sizing is applied.
+					//  9) pointerToThetaFromPoint vertical is ~0: angle mapping.
+					// 10) clamp clamps range: utility clamps endpoints.
+					// 11) fmt prints finite and dash: formatting helper behavior.
+					// 12) solveLinearSystem solves 2x2: numeric solver sanity.
+					// 13) solveLinearSystem singular => zeros: fallback works.
+					// 14) setBobCount clamps and resizes: arrays/trails resize.
+					// 15) layout bobRadius uses overrides: clamps + auto sizing.
+					// 16) forwardKinematics theta=0 points down: kinematics OK.
+					// 17) pushTrail caps to trailLen: trail buffer keeps bound.
+					// 18) applyBobCountFromUI parses sizes: "auto"/"-" => null.
+					// 19) applyBobCountFromUI clamps size tokens: limits apply.
+					// 20) invalid bob count keeps current N: blank input safe.
+					// 21) nudge N=1 changes omega once: deterministic impulse.
+					// 22) nudge N=2 changes both ends: deterministic impulse.
+					// 23) hitTest finds last bob center: interaction picking.
+					// 24) rk4Step returns finite vector: integration stable.
+					// 25) setBobCount supports N=1..10: all counts are valid.
+					// 26) setBobCount clamps out-of-range: 0->1 and 999->10.
+					// 27) setBobCount ignores NaN/Infinity: keeps current N.
+					// 28) applyBobCountFromUI sets all N=1..10 from input.
+					// 29) applyBobCountFromUI sizes missing => auto for rest.
+					// 30) applyBobCountFromUI sizes extra => ignored beyond N.
+					// 31) applyBobCountFromUI sizes invalid => auto (null).
+					// 32) applyBobCountFromUI parses whitespace separators.
+					// 33) forwardKinematics straight down sums lengths.
+					// 34) forwardKinematics right angle places first bob.
+					// 35) applyBobCountFromUI clamps bobCount text inputs.
+					test('HTML core elements exist', () => {
+						assert(canvas instanceof HTMLCanvasElement);
+						assert(inputsPanel);
+						assert(statsPanel);
+						assert(testsPanel);
+						assert(!testsPanel.hidden);
+					});
+
+					test('Panels start collapsed', () => {
+						assert(panelStartup);
+						assert(panelStartup.inputsCollapsed);
+						assert(panelStartup.statsCollapsed);
+						assert(panelStartup.testsCollapsed);
+					});
+
+					test('Collapsed content is display:none', () => {
+						const a = inputsPanel.querySelector('.content');
+						const b = statsPanel.querySelector('.content');
+						const c = testsPanel.querySelector('.content');
+						setInputsCollapsed(true);
+						setStatsCollapsed(true);
+						setTestsCollapsed(true);
+						eq(getComputedStyle(a).display, 'none');
+						eq(getComputedStyle(b).display, 'none');
+						eq(getComputedStyle(c).display, 'none');
+					});
+
+					test('Expand shows content', () => {
+						const a = inputsPanel.querySelector('.content');
+						setInputsCollapsed(false);
+						eq(getComputedStyle(a).display, 'block');
+					});
+
+					test('Body overflow hidden', () => {
+						eq(getComputedStyle(document.body).overflow, 'hidden');
+					});
+
+					test('Canvas has nonzero size', () => {
+						const r = canvas.getBoundingClientRect();
+						assert(r.width > 0 && r.height > 0);
+					});
+
+					test('Default bob sizes are 20,30,10', () => {
+						assert(defaults);
+						eq(defaults.bobCountAttr, '3');
+						eq(defaults.bobSizesAttr, '20, 30, 10');
+						eq(defaults.radiusOverrides[0], 20);
+						eq(defaults.radiusOverrides[1], 30);
+						eq(defaults.radiusOverrides[2], 10);
+					});
+
+					test('resizeCanvas sets backing size', () => {
+						resizeCanvas();
+						assert(canvas.width > 0);
+						assert(canvas.height > 0);
+					});
+
+					test('pointerToThetaFromPoint vertical is ~0', () => {
+						const L = layout();
+						const rect = canvas.getBoundingClientRect();
+						const cx = rect.left + L.pivot.x;
+						const cy = rect.top + L.pivot.y + 100;
+						const t = pointerToThetaFromPoint(
+							cx,
+							cy,
+							L.pivot
+						);
+						approx(t, 0, 1e-6);
+					});
+
+					test('clamp clamps range', () => {
+						eq(clamp(-1, 0, 2), 0);
+						eq(clamp(3, 0, 2), 2);
+						eq(clamp(1.5, 0, 2), 1.5);
+					});
+
+					test('fmt prints finite and dash', () => {
+						eq(fmt(1.234, 2), '1.23');
+						eq(fmt(NaN, 2), '—');
+					});
+
+					test('solveLinearSystem solves 2x2', () => {
+						const A = [
+							[2, 1],
+							[1, 3],
+						];
+						const b = [1, 2];
+						const x = solveLinearSystem(A, b);
+						approx(x[0], 0.2, 1e-6);
+						approx(x[1], 0.6, 1e-6);
+					});
+
+					test('solveLinearSystem singular => zeros', () => {
+						const A = [
+							[0, 0],
+							[0, 0],
+						];
+						const b = [1, 2];
+						const x = solveLinearSystem(A, b);
+						eq(x[0], 0);
+						eq(x[1], 0);
+					});
+
+					test('setBobCount clamps and resizes', () => {
+						state.theta = [1, 2, 3];
+						state.omega = [0.1, 0.2, 0.3];
+						params.radiusOverrides = [10, 20, 30];
+						state.dragIndex = 99;
+						setBobCount(2);
+						eq(state.count, 2);
+						eq(state.theta.length, 2);
+						eq(state.omega.length, 2);
+						eq(state.theta[0], 1);
+						eq(state.theta[1], 2);
+						eq(state.omega[0], 0.1);
+						eq(state.omega[1], 0.2);
+						eq(params.radiusOverrides[0], 10);
+						eq(params.radiusOverrides[1], 20);
+						eq(trails.length, 2);
+						eq(state.dragIndex, 1);
+					});
+
+					test('layout bobRadius uses overrides', () => {
+						setBobCount(3);
+						params.radiusOverrides = [999, null, 1];
+						const L = layout();
+						eq(L.bobRadius(0), 80);
+						assert(L.bobRadius(1) >= 14);
+						eq(L.bobRadius(2), 6);
+					});
+
+					test('forwardKinematics theta=0 points down', () => {
+						setBobCount(1);
+						state.theta[0] = 0;
+						state.omega[0] = 0;
+						const { pivot } = layout();
+						const { p, v } = forwardKinematics(
+							pivot,
+							state.theta,
+							state.omega
+						);
+						approx(p[0].x, pivot.x, 1e-6);
+						assert(p[0].y > pivot.y);
+						eq(v[0].x, 0);
+						eq(v[0].y, 0);
+					});
+
+					test('pushTrail caps to trailLen', () => {
+						setBobCount(1);
+						params.trailLen = 3;
+						clearTrails();
+						for (let i = 0; i < 10; i++) {
+							pushTrail(0, { x: i, y: i });
+						}
+						eq(trails[0].length, 3);
+						eq(trails[0][0].x, 7);
+					});
+
+					test('applyBobCountFromUI parses sizes', () => {
+						bobCountInput.value = '3';
+						bobSizesInput.value = 'auto, 70, -';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+						eq(params.radiusOverrides[0], null);
+						eq(params.radiusOverrides[1], 70);
+						eq(params.radiusOverrides[2], null);
+					});
+
+					test('applyBobCountFromUI clamps size tokens', () => {
+						bobCountInput.value = '3';
+						bobSizesInput.value = '5, 999, x';
+						applyBobCountFromUI();
+						eq(params.radiusOverrides[0], 6);
+						eq(params.radiusOverrides[1], 80);
+						eq(params.radiusOverrides[2], null);
+					});
+
+					test('invalid bob count keeps current N', () => {
+						setBobCount(4);
+						bobCountInput.value = '   ';
+						bobSizesInput.value = '10';
+						applyBobCountFromUI();
+						eq(state.count, 4);
+					});
+
+					test('nudge N=1 changes omega once', () => {
+						const prevRand = Math.random;
+						try {
+							Math.random = () => 0.9;
+							setBobCount(1);
+							state.omega[0] = 0;
+							nudge();
+							approx(state.omega[0], 0.28, 1e-12);
+						} finally {
+							Math.random = prevRand;
+						}
+					});
+
+					test('nudge N=2 changes both ends', () => {
+						const prevRand = Math.random;
+						try {
+							Math.random = () => 0.9;
+							setBobCount(2);
+							state.omega[0] = 0;
+							state.omega[1] = 0;
+							nudge();
+							approx(state.omega[0], 0.18, 1e-12);
+							approx(state.omega[1], 0.32, 1e-12);
+						} finally {
+							Math.random = prevRand;
+						}
+					});
+
+					test('hitTest finds last bob center', () => {
+						setBobCount(2);
+						state.theta[0] = 0.6;
+						state.theta[1] = -0.2;
+						state.omega[0] = 0;
+						state.omega[1] = 0;
+						const L = layout();
+						const rect = canvas.getBoundingClientRect();
+						const { p } = forwardKinematics(
+							L.pivot,
+							state.theta,
+							state.omega
+						);
+						const last = p[p.length - 1];
+						const cx = rect.left + last.x;
+						const cy = rect.top + last.y;
+						eq(hitTest(cx, cy), 1);
+					});
+
+					test('rk4Step returns finite vector', () => {
+						setBobCount(3);
+						const n = state.count;
+						const y = state.theta.concat(state.omega);
+						const next = rk4Step(y, 1 / 120);
+						eq(next.length, 2 * n);
+						for (const v of next) assert(Number.isFinite(v));
+					});
+
+					test('setBobCount supports N=1..10', () => {
+						for (let n = 1; n <= 10; n++) {
+							setBobCount(n);
+							eq(state.count, n);
+							eq(state.theta.length, n);
+							eq(state.omega.length, n);
+							eq(params.lengths.length, n);
+							eq(params.masses.length, n);
+							eq(params.damping.length, n);
+							eq(params.radiusOverrides.length, n);
+							eq(trails.length, n);
+						}
+					});
+
+					test('setBobCount clamps out-of-range', () => {
+						setBobCount(0);
+						eq(state.count, 1);
+						setBobCount(999);
+						eq(state.count, 10);
+					});
+
+					test('setBobCount ignores NaN/Infinity', () => {
+						setBobCount(3);
+						setBobCount(NaN);
+						eq(state.count, 3);
+						setBobCount(Infinity);
+						eq(state.count, 3);
+						setBobCount(-Infinity);
+						eq(state.count, 3);
+					});
+
+					test('applyBobCountFromUI sets all N=1..10', () => {
+						for (let n = 1; n <= 10; n++) {
+							bobCountInput.value = String(n);
+							bobSizesInput.value = '';
+							applyBobCountFromUI();
+							eq(state.count, n);
+							eq(params.radiusOverrides.length, n);
+							for (let i = 0; i < n; i++) {
+								eq(params.radiusOverrides[i], null);
+							}
+						}
+					});
+
+					test('applyBobCountFromUI sizes missing => auto', () => {
+						bobCountInput.value = '4';
+						bobSizesInput.value = '10, 20';
+						applyBobCountFromUI();
+						eq(state.count, 4);
+						eq(params.radiusOverrides[0], 10);
+						eq(params.radiusOverrides[1], 20);
+						eq(params.radiusOverrides[2], null);
+						eq(params.radiusOverrides[3], null);
+					});
+
+					test('applyBobCountFromUI sizes extra => ignored', () => {
+						bobCountInput.value = '2';
+						bobSizesInput.value = '10, 20, 30, 40';
+						applyBobCountFromUI();
+						eq(state.count, 2);
+						eq(params.radiusOverrides[0], 10);
+						eq(params.radiusOverrides[1], 20);
+					});
+
+					test('applyBobCountFromUI sizes invalid => auto', () => {
+						bobCountInput.value = '3';
+						bobSizesInput.value = '0, -5, nope';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+						eq(params.radiusOverrides[0], null);
+						eq(params.radiusOverrides[1], null);
+						eq(params.radiusOverrides[2], null);
+					});
+
+					test('applyBobCountFromUI parses whitespace separators', () => {
+						bobCountInput.value = '3';
+						bobSizesInput.value = '6   7  8';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+						eq(params.radiusOverrides[0], 6);
+						eq(params.radiusOverrides[1], 7);
+						eq(params.radiusOverrides[2], 8);
+					});
+
+					test('forwardKinematics straight down sums lengths', () => {
+						setBobCount(3);
+						params.lengths = [100, 100, 100];
+						const pivot = { x: 0, y: 0 };
+						const theta = [0, 0, 0];
+						const omega = [0, 0, 0];
+						const { p } = forwardKinematics(pivot, theta, omega);
+						eq(p.length, 3);
+						approx(p[0].x, 0, 1e-12);
+						approx(p[0].y, 100, 1e-12);
+						approx(p[1].x, 0, 1e-12);
+						approx(p[1].y, 200, 1e-12);
+						approx(p[2].x, 0, 1e-12);
+						approx(p[2].y, 300, 1e-12);
+					});
+
+					test('forwardKinematics right angle places first bob', () => {
+						setBobCount(3);
+						params.lengths = [100, 100, 100];
+						const pivot = { x: 0, y: 0 };
+						const theta = [Math.PI / 2, 0, 0];
+						const omega = [0, 0, 0];
+						const { p } = forwardKinematics(pivot, theta, omega);
+						approx(p[0].x, 100, 1e-12);
+						approx(p[0].y, 0, 1e-12);
+						approx(p[1].x, 100, 1e-12);
+						approx(p[1].y, 100, 1e-12);
+						approx(p[2].x, 100, 1e-12);
+						approx(p[2].y, 200, 1e-12);
+					});
+
+					test('applyBobCountFromUI clamps bobCount text inputs', () => {
+						setBobCount(5);
+						bobSizesInput.value = '';
+						bobCountInput.value = '0';
+						applyBobCountFromUI();
+						eq(state.count, 1);
+
+						bobCountInput.value = '999';
+						applyBobCountFromUI();
+						eq(state.count, 10);
+
+						bobCountInput.value = '-3';
+						applyBobCountFromUI();
+						eq(state.count, 1);
+
+						bobCountInput.value = '3.9';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+
+						bobCountInput.value = 'abc';
+						applyBobCountFromUI();
+						eq(state.count, 3);
+					});
+
+					testsText.textContent =
+						'Ready. Click Run to execute tests.';
+					runTestsBtn.addEventListener('click', () => {
+						runAllTests();
+					});
+				}
+
+				resizeCanvas();
+				applyBobCountFromUI();
+				draw();
+
+				requestAnimationFrame((t) => {
+					state.lastT = t;
+					requestAnimationFrame(tick);
+				});
+			})();
+		</script>
+	</body>
+</html>
