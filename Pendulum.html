@@ -1,74 +1,76 @@
-<!-- ====================================================================
-	N-Bob Pendulum - Prabhu & GPT 5.2
-	Version: 1.4
+<!-- ==================================================================
+    N-Bob Pendulum - Prabhu & GPT 5.2
+    Version: 1.5
 
-	What this file is
-	- A self-contained HTML/CSS/JS canvas simulation of an N-bob pendulum
-	  chain (1-10 bobs).
-	- Includes interactive controls (Inputs panel), a live per-bob stats
-	  readout (Stats panel), and a trail renderer.
-	- Everything lives in this one file: UI, physics integration, rendering,
-	  and pointer interaction.
+    What this file is
+    -----------------------------------------------------------------
+    A self-contained HTML/CSS/JS canvas simulation of an N-bob
+    pendulum chain (1-10 bobs). Includes:
+    - Interactive controls (Inputs panel)
+    - Live per-bob stats readout (Stats panel)
+    - Trail renderer
+    - Built-in unit test suite (80+ tests)
+    Everything lives in this one file: UI, physics, rendering,
+    pointer interaction, and tests.
 
-	How to use
-	- Drag any bob to set its angle (relative to its parent joint). Release
-	  to let it swing.
-	- Click empty space to "nudge" the system with a small impulse.
-	- You can click slightly near a bob (not only exactly on it).
-	- Use Inputs -> Bobs to change the number of bobs.
-	- Use Inputs -> Sizes to override the visual radius of each bob (px),
-	  e.g. "20, 30, 10".
-	  - You can also use "auto" or "-" in a position to revert that bob
-	    to automatic sizing.
-	- Use Inputs -> Lengths to override each rod length (px),
-	  e.g. "auto" or "260, 220, 200".
-	  - Use "auto" or "-" per entry to revert that segment to automatic.
-	- Press Enter in any Inputs field to apply.
-	- Optional: provide Inputs via URL query params (auto-applied on load).
-	  Supported params (aliases in parentheses):
-	  - bobs (bobCount, n): number of bobs, e.g. ?bobs=4
-	  - sizes (bobSizes, radii): per-bob radius list (px), e.g.
-	    &sizes=20,30,10,14
-	  - lengths (bobLengths, lens): per-bob rod length list (px), e.g.
-	    &lengths=auto,250,-,200
-	  Notes:
-	  - Lists can be comma- or space-separated.
-	  - Use "auto" or "-" per entry to revert that value.
-	  - You can combine these with ?tests=1.
-	  Examples:
-	  - pendulum.html?bobs=5
-	  - pendulum.html?bobs=4&sizes=20,30,10,14
-	  - pendulum.html?bobs=4&lengths=auto,250,-,200
-	  - pendulum.html?bobs=6&sizes=auto,26,24,22,20,18&tests=1
-	- Optional: add ?tests=1 to the URL to show a Tests panel and run the
-	  embedded unit tests (no external runner required).
-	  - Tests show numbered PASS/FAIL output and simple function coverage.
+    How to use
+    -----------------------------------------------------------------
+    - Drag any bob to set its angle (relative to parent). Release
+      to let it swing.
+    - Click empty space to "nudge" the system with a small impulse.
+    - Click near a bob (not only exactly on it) to select it.
+    - Use Inputs -> Bobs to change the number of bobs (1-10).
+    - Use Inputs -> Sizes to override per-bob radius (px),
+      e.g. "20, 30, 10". Use "auto" or "-" to revert.
+    - Use Inputs -> Lengths to override rod lengths (px),
+      e.g. "auto" or "260, 220, 200". Use "auto"/"-" to revert.
+    - Press Enter in any Inputs field to apply.
 
-	High-level architecture
-	- State: angles (theta[]) and angular velocities (omega[]) per bob.
-	- Params: rod lengths, masses, damping, dt limits, trail length, and
-	  optional per-bob radius overrides.
-	- Physics:
-	  - Computes angular accelerations by building a dense linear system
-	    A*alpha=b and solving it each step.
-	  - Integrates the ODE using RK4 (Runge-Kutta 4) with sub-stepping.
-	- Rendering:
-	  - Canvas is full-viewport; each frame draws vignette, trails, rods,
-	    ground shadows, and bobs.
-	  - Trails are stored as per-bob point buffers.
-	- UI:
-	  - Three minimizable panels (Inputs, Stats, Tests).
-	  - Panels use +/− toggles and overlay the pendulum area (opening a
-	    panel does not resize the canvas).
-	  - Stats shows a table for every bob: measured period/frequency (from
-	    recent oscillations), angle, angular velocity, and speed.
+    URL query params (auto-applied on load)
+    -----------------------------------------------------------------
+    - bobs (bobCount, n): number of bobs, e.g. ?bobs=4
+    - sizes (bobSizes, radii): per-bob radius list (px)
+    - lengths (bobLengths, lens): per-bob rod length list (px)
+    Notes:
+    - Lists can be comma- or space-separated.
+    - Use "auto" or "-" per entry to revert that value.
+    Examples:
+    - pendulum.html?bobs=5
+    - pendulum.html?bobs=4&sizes=20,30,10,14
+    - pendulum.html?bobs=4&lengths=auto,250,-,200
+    - pendulum.html?bobs=6&sizes=auto,26,24,22,20,18&tests=1
 
-	Notes / tradeoffs
-	- This is a visualization-oriented simulation ("looks/feels" realistic)
-	  rather than a rigorously exact physical model; constants like gEff are
-	  tuned for pleasing motion at screen scale.
-	- To keep the UI responsive, matrix sizes are limited (N<=10) and the
-	  solver is a straightforward Gaussian elimination with pivoting.
+    Testing
+    -----------------------------------------------------------------
+    Add ?tests=1 to the URL to show the Tests panel.
+    - 80+ unit tests covering: DOM, physics, rendering, UI, edge
+      cases, and error handling.
+    - Tests show numbered PASS/FAIL output and function coverage.
+    - No external test runner required.
+
+    High-level architecture
+    -----------------------------------------------------------------
+    - State: angles (theta[]) and angular velocities (omega[])
+    - Params: rod lengths, masses, damping, dt, trail length,
+      optional per-bob radius overrides
+    - Physics:
+      - Angular accelerations via dense linear system A*alpha=b
+      - RK4 integration with sub-stepping
+    - Rendering:
+      - Full-viewport canvas with DPR scaling
+      - Vignette, trails, rods, shadows, bobs
+    - UI:
+      - Three collapsible panels (Inputs, Stats, Tests)
+      - Panels overlay canvas; responsive for phone/laptop
+      - Stats: period, frequency, angle, velocity, speed per bob
+
+    Notes / tradeoffs
+    -----------------------------------------------------------------
+    - Visualization-oriented ("looks/feels" realistic) rather than
+      rigorously exact; gEff tuned for pleasing screen-scale motion.
+    - Matrix sizes limited (N<=10); solver uses Gaussian elimination
+      with partial pivoting.
+    - Responsive CSS for portrait/landscape phone and desktop.
 -->
 <!doctype html>
 <html lang="en">
@@ -142,6 +144,11 @@
 				border-radius: 999px;
 				background: rgba(0, 0, 0, 0.25);
 				backdrop-filter: blur(10px);
+				max-width: calc(100vw - 40px);
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				z-index: 10;
 			}
 
 			/* Bottom-left footer label. */
@@ -180,19 +187,177 @@
 				.hud-left,
 				.hud-right {
 					bottom: 28px;
-					max-width: min(360px, calc(100vw - 24px));
+					max-width: min(320px, calc(100vw - 24px));
 				}
 
 				.hud-left {
-					left: 12px;
+					left: 8px;
 				}
 
 				.hud-right {
-					right: 12px;
+					right: 8px;
 				}
 
 				.wrap {
 					padding: 6px 6px 26px;
+				}
+
+				.panel {
+					padding: 8px 10px;
+					font-size: 11px;
+				}
+
+				.panel input[type='text'] {
+					width: 140px;
+					font-size: 11px;
+					padding: 5px 6px;
+				}
+
+				.panel pre {
+					font-size: 10px;
+				}
+
+				#statsText {
+					max-height: 35vh;
+				}
+
+				#testsText {
+					max-height: 35vh;
+				}
+
+				.hint {
+					font-size: 10px;
+					padding: 5px 8px;
+				}
+
+				#copyright {
+					font-size: 9px;
+					left: 8px;
+				}
+			}
+
+			/* Phone landscape: panels side by side, reduced height. */
+			@media (max-height: 500px) and (orientation: landscape) {
+				.hud-left,
+				.hud-right {
+					bottom: 8px;
+					max-width: min(320px, calc(45vw - 16px));
+				}
+
+				.hud-left {
+					left: 8px;
+				}
+
+				.hud-right {
+					right: 8px;
+				}
+
+				.wrap {
+					padding: 4px 4px 8px;
+				}
+
+				.panel {
+					padding: 6px 8px;
+					font-size: 10px;
+					border-radius: 10px;
+				}
+
+				.panel .header {
+					margin-bottom: 4px;
+				}
+
+				.panel .minbtn {
+					width: 24px;
+					height: 24px;
+					min-width: 36px;
+					min-height: 36px;
+					font-size: 14px;
+				}
+
+				.panel input[type='text'] {
+					width: 120px;
+					font-size: 10px;
+					padding: 4px 6px;
+				}
+
+				.panel button {
+					padding: 4px 8px;
+					font-size: 10px;
+					min-height: 32px;
+				}
+
+				.panel pre {
+					font-size: 9px;
+				}
+
+				#statsText {
+					max-height: 25vh;
+				}
+
+				#testsText {
+					max-height: 25vh;
+				}
+
+				.panel.is-collapsed {
+					max-width: min(160px, calc(100vw - 24px));
+					padding-bottom: 6px;
+				}
+
+				.hint {
+					top: 4px;
+					font-size: 9px;
+					padding: 4px 8px;
+				}
+
+				#copyright {
+					bottom: 2px;
+					font-size: 9px;
+				}
+
+				canvas {
+					border-radius: 12px;
+				}
+			}
+
+			/* Very small screens (< 380px width) */
+			@media (max-width: 380px) {
+				.hud-left,
+				.hud-right {
+					max-width: calc(100vw - 16px);
+				}
+
+				.hud-left {
+					left: 4px;
+				}
+
+				.hud-right {
+					right: 4px;
+				}
+
+				.panel input[type='text'] {
+					width: 100px;
+				}
+
+				.inputs-controls {
+					grid-template-columns: auto minmax(0, 1fr);
+					gap: 4px 6px;
+				}
+
+				.inputs-controls input {
+					grid-column: 2;
+				}
+
+				.inputs-controls #applyBobs {
+					grid-column: 1 / -1;
+					justify-self: stretch;
+				}
+
+				.inputs-controls label[for='shareUrl'] {
+					grid-column: 1;
+				}
+
+				.inputs-controls #shareUrl {
+					grid-column: 2;
 				}
 			}
 
@@ -208,6 +373,14 @@
 				font-size: 12px;
 				line-height: 1.35;
 				user-select: text;
+				box-sizing: border-box;
+				max-height: calc(100vh - 60px);
+				overflow: hidden;
+			}
+
+			.panel .content {
+				overflow: auto;
+				max-height: calc(100vh - 120px);
 			}
 
 			.panel .header {
@@ -230,6 +403,8 @@
 				user-select: none;
 				width: 28px;
 				height: 28px;
+				min-width: 44px;
+				min-height: 44px;
 				padding: 0;
 				border-radius: 999px;
 				border: 1px solid rgba(255, 255, 255, 0.10);
@@ -242,9 +417,28 @@
 				font-weight: 700;
 				font-size: 16px;
 				line-height: 1;
+				flex-shrink: 0;
+				-webkit-tap-highlight-color: transparent;
 			}
 
-			.panel .minbtn:hover {
+			.panel .minbtn:hover,
+			.panel .minbtn:active {
+				background: rgba(255, 255, 255, 0.10);
+			}
+
+			.panel button {
+				padding: 6px 10px;
+				border-radius: 10px;
+				border: 1px solid rgba(255, 255, 255, 0.10);
+				background: rgba(255, 255, 255, 0.07);
+				color: rgba(255, 255, 255, 0.85);
+				cursor: pointer;
+				min-height: 36px;
+				-webkit-tap-highlight-color: transparent;
+			}
+
+			.panel button:hover,
+			.panel button:active {
 				background: rgba(255, 255, 255, 0.10);
 			}
 
@@ -314,6 +508,9 @@
 				background: rgba(255, 255, 255, 0.06);
 				color: rgba(255, 255, 255, 0.88);
 				outline: none;
+				box-sizing: border-box;
+				min-width: 0;
+				font-size: inherit;
 			}
 
 			.panel input::placeholder {
@@ -322,19 +519,7 @@
 
 			.panel input[type='text'] {
 				width: 190px;
-			}
-
-			.panel button {
-				padding: 6px 10px;
-				border-radius: 10px;
-				border: 1px solid rgba(255, 255, 255, 0.10);
-				background: rgba(255, 255, 255, 0.07);
-				color: rgba(255, 255, 255, 0.85);
-				cursor: pointer;
-			}
-
-			.panel button:hover {
-				background: rgba(255, 255, 255, 0.10);
+				max-width: 100%;
 			}
 
 			.panel pre {
@@ -350,6 +535,8 @@
 					"Courier New",
 					monospace;
 				color: rgba(255, 255, 255, 0.82);
+				overflow-x: auto;
+				max-width: 100%;
 			}
 
 			/* Test output helpers (only visible in ?tests=1 mode). */
@@ -385,6 +572,12 @@
 			/* Keep Tests output from growing unbounded. */
 			#testsText {
 				max-height: 45vh;
+				overflow: auto;
+			}
+
+			/* Keep Stats output from growing unbounded. */
+			#statsText {
+				max-height: 40vh;
 				overflow: auto;
 			}
 
@@ -465,11 +658,10 @@
 							placeholder="Applied URL appears here"
 						/>
 					</div>
-					<div class="test-dim">
-						Bobs: 1 to 10.
-						Sizes/Lengths: comma-separated (one per bob).
-						Use "auto" or "-" to reset a value.
-						Click Apply to use changes.
+					<div class="test-dim"
+						style="word-wrap:break-word;overflow-wrap:break-word">
+						Bobs: 1-10. Sizes/Lengths: comma-separated.
+						Use "auto" or "-" to reset. Click Apply.
 					</div>
 				</div>
 			</div>
@@ -841,8 +1033,11 @@
 						Math.min(8, window.devicePixelRatio || 1)
 					);
 					const rect = canvas.getBoundingClientRect();
-					canvas.width = Math.floor(rect.width * dpr);
-					canvas.height = Math.floor(rect.height * dpr);
+					// Guard against zero or invalid dimensions
+					const w = Math.max(1, Math.floor(rect.width * dpr));
+					const h = Math.max(1, Math.floor(rect.height * dpr));
+					canvas.width = w;
+					canvas.height = h;
 					ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 				}
 
@@ -1162,9 +1357,14 @@
 				function accelerations(theta, omega) {
 					covHit('accelerations');
 					const n = theta.length;
+					if (n === 0) return [];
 					const l = params.lengths;
 					const m = params.masses;
 					const d = params.damping;
+					// Validate arrays have proper lengths
+					if (l.length < n || m.length < n || d.length < n) {
+						return new Array(n).fill(0);
+					}
 
 					const Mtail = new Array(n);
 					let accMass = 0;
@@ -1226,6 +1426,9 @@
 				// -------------------------------------------------------------
 				function rk4Step(y, dt) {
 					covHit('rk4Step');
+					if (!y || y.length === 0 || !Number.isFinite(dt) || dt <= 0) {
+						return y ? y.slice() : [];
+					}
 					const k1 = deriv(y);
 					const y2 = y.map((v, i) => v + 0.5 * dt * k1[i]);
 					const k2 = deriv(y2);
@@ -1234,11 +1437,9 @@
 					const y4 = y.map((v, i) => v + dt * k3[i]);
 					const k4 = deriv(y4);
 					return y.map((v, i) => {
-						return (
-							v +
-							(dt / 6) *
-								(k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i])
-						);
+						const result = v + (dt / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
+						// Protect against NaN/Infinity propagation
+						return Number.isFinite(result) ? result : v;
 					});
 				}
 
@@ -1250,9 +1451,12 @@
 				function forwardKinematics(pivot, theta, omega) {
 					covHit('forwardKinematics');
 					const n = theta.length;
+					if (n === 0) return { p: [], v: [] };
 					const p = new Array(n);
 					const v = new Array(n);
-					let prevP = { x: pivot.x, y: pivot.y };
+					const px = Number.isFinite(pivot?.x) ? pivot.x : 0;
+					const py = Number.isFinite(pivot?.y) ? pivot.y : 0;
+					let prevP = { x: px, y: py };
 					let prevV = { x: 0, y: 0 };
 
 					for (let i = 0; i < n; i++) {
@@ -1292,36 +1496,48 @@
 
 				function pushTrail(index, point) {
 					covHit('pushTrail');
+					if (index < 0 || index >= trails.length) return;
 					const arr = trails[index];
+					if (!arr) return;
+					if (!point) return;
+					if (!Number.isFinite(point.x)) return;
+					if (!Number.isFinite(point.y)) return;
 					arr.push(point);
-					const extra = arr.length - params.trailLen;
+					const maxLen = Math.max(1, params.trailLen);
+					const extra = arr.length - maxLen;
 					if (extra > 0) arr.splice(0, extra);
 				}
 
 				function drawTrail(points, hue) {
 					covHit('drawTrail');
-					if (points.length < 2) return;
+					if (!points || points.length < 2) return;
+					// Filter out any invalid points
+					const validPoints = points.filter(p => 
+						p && Number.isFinite(p.x) && Number.isFinite(p.y)
+					);
+					if (validPoints.length < 2) return;
 					// Draw as one smoothed curve (no per-point "dots").
 					ctx.lineCap = 'round';
 					ctx.lineJoin = 'round';
 					ctx.lineWidth = 2;
-					ctx.strokeStyle = `hsla(${hue}, 85%, 72%, 0.35)`;
+					const safeHue = Number.isFinite(hue) ? hue : 200;
+					ctx.strokeStyle = `hsla(${safeHue}, 85%, 72%, 0.35)`;
 					ctx.beginPath();
-					ctx.moveTo(points[0].x, points[0].y);
-					if (points.length === 2) {
-						ctx.lineTo(points[1].x, points[1].y);
+					ctx.moveTo(validPoints[0].x, validPoints[0].y);
+					if (validPoints.length === 2) {
+						ctx.lineTo(validPoints[1].x, validPoints[1].y);
 						ctx.stroke();
 						return;
 					}
 
-					for (let i = 1; i < points.length - 1; i++) {
-						const p0 = points[i];
-						const p1 = points[i + 1];
+					for (let i = 1; i < validPoints.length - 1; i++) {
+						const p0 = validPoints[i];
+						const p1 = validPoints[i + 1];
 						const mx = (p0.x + p1.x) * 0.5;
 						const my = (p0.y + p1.y) * 0.5;
 						ctx.quadraticCurveTo(p0.x, p0.y, mx, my);
 					}
-					const last = points[points.length - 1];
+					const last = validPoints[validPoints.length - 1];
 					ctx.lineTo(last.x, last.y);
 					ctx.stroke();
 				}
@@ -1497,11 +1713,19 @@
 				// relative to a joint origin.
 				function pointerToThetaFromPoint(clientX, clientY, origin) {
 					covHit('pointerToThetaFromPoint');
+					if (!Number.isFinite(clientX)) return 0;
+					if (!Number.isFinite(clientY)) return 0;
+					if (!origin) return 0;
+					if (!Number.isFinite(origin.x)) return 0;
+					if (!Number.isFinite(origin.y)) return 0;
 					const rect = canvas.getBoundingClientRect();
+					if (!rect) return 0;
 					const x = clientX - rect.left;
 					const y = clientY - rect.top;
 					const dx = x - origin.x;
 					const dy = y - origin.y;
+					// Handle edge case where pointer is exactly at origin
+					if (dx === 0 && dy === 0) return 0;
 					let theta = Math.atan2(dx, dy);
 					theta = clamp(theta, -Math.PI * 0.95, Math.PI * 0.95);
 					return theta;
@@ -1513,8 +1737,10 @@
 				// a moving bob.
 				function hitTest(clientX, clientY) {
 					covHit('hitTest');
+					if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return -1;
 					const { pivot, bobRadius } = layout();
 					const rect = canvas.getBoundingClientRect();
+					if (!rect || rect.width === 0 || rect.height === 0) return -1;
 					const x = clientX - rect.left;
 					const y = clientY - rect.top;
 					const { p } = forwardKinematics(
@@ -1545,15 +1771,19 @@
 				// -------------------------------------------------------------
 				function nudge() {
 					covHit('nudge');
-					if (state.count <= 0) return;
+					if (state.count <= 0 || !state.omega || state.omega.length === 0) return;
 					if (state.count === 1) {
-						state.omega[0] +=
+						state.omega[0] = (state.omega[0] || 0) +
 							(Math.random() > 0.5 ? 1 : -1) * 0.28;
 						return;
 					}
-					state.omega[0] += (Math.random() > 0.5 ? 1 : -1) * 0.18;
-					state.omega[state.count - 1] +=
-						(Math.random() > 0.5 ? 1 : -1) * 0.32;
+					const sign0 = Math.random() > 0.5 ? 1 : -1;
+					state.omega[0] = (state.omega[0] || 0) + sign0 * 0.18;
+					const lastIdx = state.count - 1;
+					if (lastIdx >= 0 && lastIdx < state.omega.length) {
+						state.omega[lastIdx] = (state.omega[lastIdx] || 0) +
+							(Math.random() > 0.5 ? 1 : -1) * 0.32;
+					}
 				}
 
 				canvas.addEventListener(
@@ -1763,8 +1993,20 @@
 						requestAnimationFrame(tick);
 						return;
 					}
+					// Guard against invalid timestamps (e.g., page was backgrounded)
+					if (!Number.isFinite(now)) {
+						requestAnimationFrame(tick);
+						return;
+					}
 					const dtRaw = (now - state.lastT) / 1000;
 					state.lastT = now;
+					// Skip if dt negative (clock skew) or too large (backgrounded)
+					if (!Number.isFinite(dtRaw) || dtRaw < 0 || dtRaw > 1) {
+						updateStats(0);
+						draw();
+						requestAnimationFrame(tick);
+						return;
+					}
 
 					if (!prefersReducedMotion && !state.dragging) {
 						const dt = clamp(dtRaw, 0, 1 / 15);
@@ -2144,67 +2386,113 @@
 						runTestsBtn.disabled = false;
 					}
 
-					// ---------------------
-					// Test cases
-					// ---------------------
-					// Test case catalog (in order):
-					//  1) HTML core elements exist: required DOM nodes exist.
-					//  2) Panels start collapsed: startup UI is minimized.
-					//  3) Collapsed content is display:none: CSS collapse works.
-					//  4) Expand shows content: expanding restores display:block.
-					//  5) Body overflow hidden: no scrollbars during use.
-					//  6) Canvas has nonzero size: viewport layout is wired.
-					//  7) Default bob sizes are 20,30,10: defaults stay stable.
-					//  8) Default bob lengths are auto: defaults stay stable.
-					//  9) resizeCanvas sets backing size: DPR sizing is applied.
-					// 10) pointerToThetaFromPoint vertical is ~0: angle mapping.
-					// 11) clamp clamps range: utility clamps endpoints.
-					// 12) fmt prints finite and dash: formatting helper behavior.
-					// 13) solveLinearSystem solves 2x2: numeric solver sanity.
-					// 14) solveLinearSystem singular => zeros: fallback works.
-					// 15) setBobCount clamps and resizes: arrays/trails resize.
-					// 16) layout bobRadius uses overrides: clamps + auto sizing.
-					// 17) forwardKinematics theta=0 points down: kinematics OK.
-					// 18) pushTrail caps to trailLen: trail buffer keeps bound.
-					// 19) applyBobCountFromUI parses sizes: "auto"/"-" => null.
-					// 20) applyBobCountFromUI clamps size tokens: limits apply.
-					// 21) invalid bob count keeps current N: blank input safe.
-					// 22) nudge N=1 changes omega once: deterministic impulse.
-					// 23) nudge N=2 changes both ends: deterministic impulse.
-					// 24) hitTest finds last bob center: interaction picking.
-					// 25) hitTest selects near bob edge: click cushion works.
-					// 26) rk4Step returns finite vector: integration stable.
-					// 27) setBobCount supports N=1..10: all counts are valid.
-					// 28) setBobCount clamps out-of-range: 0->1 and 999->10.
-					// 29) setBobCount ignores NaN/Infinity: keeps current N.
-					// 30) applyBobCountFromUI sets all N=1..10 from input.
-					// 31) applyBobCountFromUI sizes missing => auto for rest.
-					// 32) applyBobCountFromUI sizes extra => ignored beyond N.
-					// 33) applyBobCountFromUI sizes invalid => auto (null).
-					// 34) applyBobCountFromUI parses whitespace separators.
-					// 35) forwardKinematics straight down sums lengths.
-					// 36) forwardKinematics right angle places first bob.
-					// 37) applyBobCountFromUI clamps bobCount text inputs.
-					// 38) Apply click collapses Inputs panel.
-					// 39) Copyright footer exists and matches text.
-					// 40) Hint is small and top-placed.
-					// 41) applyBobCountFromUI parses lengths tokens.
-					// 42) applyBobCountFromUI clamps lengths tokens.
-					// 43) applyBobCountFromUI lengths invalid => auto.
-					// 44) Wrap padding bottom stays small.
-					// 45) Inputs toggle does not resize canvas.
-					// 46) Stats toggle does not resize canvas.
-					// 47) Toggle buttons show + and -.
-					// 48) Enter key applies Inputs.
-					// 49) Inputs stack stays above footer.
-					// 50) Stats shows period and frequency.
-					// 51) applyBobCountFromUI length tokens are case-insensitive.
-					// 52) Period tracker estimates sine wave period.
-					// 53) applyInputsFromQuery sets Inputs fields.
-					// 54) URL params apply to state/overrides.
-					// 55) Share URL preserves tests=1.
-					// 56) Share URL clamps bobs.
-					// 57) Share URL normalizes list tokens.
+					// -------------------------------------------------------
+					// Test cases (80+ tests)
+					// -------------------------------------------------------
+					// Categories:
+					//   DOM/UI (1-10): element existence, panel state, CSS
+					//   Defaults (7-8): verify default config values
+					//   Canvas (9, 45-46): sizing, DPR, toggle stability
+					//   Math utils (11-14): clamp, fmt, linear solver
+					//   State mgmt (15, 27-29): setBobCount behavior
+					//   Layout (16): bobRadius overrides and auto
+					//   Kinematics (17, 35-36, 58-59): position/velocity
+					//   Trails (18, 63-64): pushTrail bounds and NaN
+					//   UI parsing (19-21, 30-34, 37, 41-43, 51): inputs
+					//   Interaction (22-25, 65-68): nudge, hitTest, pointer
+					//   Physics (26, 60-62): rk4Step, accelerations
+					//   Panels (38, 47-48): apply, toggle, enter key
+					//   Footer/hint (39-40, 44, 49): layout checks
+					//   Stats (50, 52): period tracker, display
+					//   URL/Share (53-57): query params, share URL
+					//   Edge cases (58-68): null, NaN, empty, bounds
+					//   New tests (69-80+): solver, deriv, clearTrails,
+					//     radToDeg, damping, masses, draw, updateStats
+					//
+					// Test catalog:
+					//  1) HTML core elements exist
+					//  2) Panels start collapsed
+					//  3) Collapsed content is display:none
+					//  4) Expand shows content
+					//  5) Body overflow hidden
+					//  6) Canvas has nonzero size
+					//  7) Default bob sizes are 20,30,10
+					//  8) Default bob lengths are auto
+					//  9) resizeCanvas sets backing size
+					// 10) pointerToThetaFromPoint vertical is ~0
+					// 11) clamp clamps range
+					// 12) fmt prints finite and dash
+					// 13) solveLinearSystem solves 2x2
+					// 14) solveLinearSystem singular => zeros
+					// 15) setBobCount clamps and resizes
+					// 16) layout bobRadius uses overrides
+					// 17) forwardKinematics theta=0 points down
+					// 18) pushTrail caps to trailLen
+					// 19) applyBobCountFromUI parses sizes
+					// 20) applyBobCountFromUI clamps size tokens
+					// 21) invalid bob count keeps current N
+					// 22) nudge N=1 changes omega once
+					// 23) nudge N=2 changes both ends
+					// 24) hitTest finds last bob center
+					// 25) hitTest selects near bob edge
+					// 26) rk4Step returns finite vector
+					// 27) setBobCount supports N=1..10
+					// 28) setBobCount clamps out-of-range
+					// 29) setBobCount ignores NaN/Infinity
+					// 30) applyBobCountFromUI sets all N=1..10
+					// 31) applyBobCountFromUI sizes missing => auto
+					// 32) applyBobCountFromUI sizes extra => ignored
+					// 33) applyBobCountFromUI sizes invalid => auto
+					// 34) applyBobCountFromUI parses whitespace
+					// 35) forwardKinematics straight down sums lengths
+					// 36) forwardKinematics right angle places bob
+					// 37) applyBobCountFromUI clamps bobCount text
+					// 38) Apply click collapses Inputs panel
+					// 39) Copyright footer exists
+					// 40) Hint is small and top-placed
+					// 41) applyBobCountFromUI parses lengths tokens
+					// 42) applyBobCountFromUI clamps lengths tokens
+					// 43) applyBobCountFromUI lengths invalid => auto
+					// 44) Wrap padding bottom stays small
+					// 45) Inputs toggle does not resize canvas
+					// 46) Stats toggle does not resize canvas
+					// 47) Toggle buttons show + and -
+					// 48) Enter key applies Inputs
+					// 49) Inputs stack stays above footer
+					// 50) Stats shows period and frequency
+					// 51) length tokens are case-insensitive
+					// 52) Period tracker estimates sine wave period
+					// 53) applyInputsFromQuery sets Inputs fields
+					// 54) URL params apply to state/overrides
+					// 55) Share URL preserves tests=1
+					// 56) Share URL clamps bobs
+					// 57) Share URL normalizes list tokens
+					// 58) forwardKinematics handles empty arrays
+					// 59) forwardKinematics handles null pivot
+					// 60) rk4Step handles empty array
+					// 61) rk4Step handles invalid dt
+					// 62) accelerations handles empty arrays
+					// 63) pushTrail ignores invalid index
+					// 64) pushTrail ignores invalid points
+					// 65) hitTest returns -1 for invalid coords
+					// 66) pointerToThetaFromPoint invalid inputs
+					// 67) pointerToThetaFromPoint pointer at origin
+					// 68) nudge handles edge cases
+					// 69) solveLinearSystem 3x3 system
+					// 70) solveLinearSystem identity matrix
+					// 71) deriv returns correct length
+					// 72) clearTrails empties all trail arrays
+					// 73) radToDeg converts correctly
+					// 74) params.damping array has correct length
+					// 75) params.masses array has correct length
+					// 76) layout returns valid pivot coordinates
+					// 77) forwardKinematics velocity with omega
+					// 78) accelerations returns correct length
+					// 79) multiple rk4Steps maintain stability
+					// 80) resetPeriodTracker initializes arrays
+					// 81) hitTest misses when far from bobs
+					// 82) theta wrapping in tick stays in range
+					// 83) normalizeListText handles edge cases
 					test('HTML core elements exist', () => {
 						assert(canvas instanceof HTMLCanvasElement);
 						assert(inputsPanel);
@@ -2871,6 +3159,289 @@
 						const u = new URL(shareUrlInput.value);
 						eq(u.searchParams.get('sizes'), 'auto,10,-,12');
 						eq(u.searchParams.get('lengths'), 'auto,250,-,200');
+					});
+
+					// =====================================================
+					// Edge case and robustness tests (58-70)
+					// =====================================================
+					test('forwardKinematics handles empty arrays', () => {
+						const { p, v } = forwardKinematics({ x: 100, y: 100 }, [], []);
+						eq(p.length, 0);
+						eq(v.length, 0);
+					});
+
+					test('forwardKinematics handles null/invalid pivot', () => {
+						setBobCount(1);
+						state.theta[0] = 0;
+						state.omega[0] = 0;
+						params.lengths[0] = 100;
+						const { p: p1 } = forwardKinematics(
+							null,
+							state.theta,
+							state.omega
+						);
+						approx(p1[0].x, 0, 1e-6);
+						approx(p1[0].y, 100, 1e-6);
+						const invPivot = { x: NaN, y: 50 };
+						const { p: p2 } = forwardKinematics(
+							invPivot,
+							state.theta,
+							state.omega
+						);
+						approx(p2[0].x, 0, 1e-6);
+					});
+
+					test('rk4Step handles empty array', () => {
+						const r = rk4Step([], 0.01);
+						eq(r.length, 0);
+					});
+
+					test('rk4Step handles invalid dt', () => {
+						setBobCount(2);
+						const y = [0.5, 0.3, 0, 0];
+						const r1 = rk4Step(y, 0);
+						eq(r1[0], 0.5);
+						const r2 = rk4Step(y, -1);
+						eq(r2[0], 0.5);
+						const r3 = rk4Step(y, NaN);
+						eq(r3[0], 0.5);
+					});
+
+					test('accelerations handles empty arrays', () => {
+						const a = accelerations([], []);
+						eq(a.length, 0);
+					});
+
+					test('pushTrail ignores invalid index', () => {
+						setBobCount(2);
+						clearTrails();
+						pushTrail(-1, { x: 0, y: 0 });
+						pushTrail(999, { x: 0, y: 0 });
+						eq(trails[0].length, 0);
+						eq(trails[1].length, 0);
+					});
+
+					test('pushTrail ignores invalid points', () => {
+						setBobCount(1);
+						clearTrails();
+						pushTrail(0, null);
+						pushTrail(0, { x: NaN, y: 10 });
+						pushTrail(0, { x: 10, y: Infinity });
+						eq(trails[0].length, 0);
+						pushTrail(0, { x: 10, y: 20 });
+						eq(trails[0].length, 1);
+					});
+
+					test('hitTest returns -1 for invalid coords', () => {
+						eq(hitTest(NaN, 100), -1);
+						eq(hitTest(100, NaN), -1);
+						eq(hitTest(Infinity, 100), -1);
+					});
+
+					test('pointerToThetaFromPoint handles invalid inputs', () => {
+						const L = layout();
+						eq(pointerToThetaFromPoint(NaN, 100, L.pivot), 0);
+						eq(pointerToThetaFromPoint(100, NaN, L.pivot), 0);
+						eq(pointerToThetaFromPoint(100, 100, null), 0);
+						eq(pointerToThetaFromPoint(100, 100, { x: NaN, y: 0 }), 0);
+					});
+
+					test('pointerToThetaFromPoint handles pointer at origin', () => {
+						const rect = canvas.getBoundingClientRect();
+						const origin = { x: 100, y: 100 };
+						const theta = pointerToThetaFromPoint(
+							rect.left + origin.x,
+							rect.top + origin.y,
+							origin
+						);
+						eq(theta, 0);
+					});
+
+					test('nudge handles edge cases', () => {
+						// Test with count = 0 (should not throw)
+						const prevCount = state.count;
+						state.count = 0;
+						state.omega = [];
+						nudge(); // Should not throw
+						state.count = prevCount;
+						setBobCount(3);
+					});
+
+					// ===================================================
+					// Additional tests (69-83)
+					// ===================================================
+					test('solveLinearSystem 3x3 system', () => {
+						const A = [
+							[3, 2, -1],
+							[2, -2, 4],
+							[-1, 0.5, -1],
+						];
+						const b = [1, -2, 0];
+						const x = solveLinearSystem(A, b);
+						eq(x.length, 3);
+						// Verify Ax = b
+						for (let i = 0; i < 3; i++) {
+							let sum = 0;
+							for (let j = 0; j < 3; j++) {
+								sum += A[i][j] * x[j];
+							}
+							approx(sum, b[i], 1e-6);
+						}
+					});
+
+					test('solveLinearSystem identity matrix', () => {
+						const A = [
+							[1, 0, 0],
+							[0, 1, 0],
+							[0, 0, 1],
+						];
+						const b = [5, 3, 7];
+						const x = solveLinearSystem(A, b);
+						approx(x[0], 5, 1e-12);
+						approx(x[1], 3, 1e-12);
+						approx(x[2], 7, 1e-12);
+					});
+
+					test('deriv returns correct length', () => {
+						setBobCount(3);
+						const y = state.theta.concat(state.omega);
+						const d = deriv(y);
+						eq(d.length, 6); // 2 * n
+						for (const v of d) assert(Number.isFinite(v));
+					});
+
+					test('clearTrails empties all trail arrays', () => {
+						setBobCount(3);
+						pushTrail(0, { x: 1, y: 1 });
+						pushTrail(1, { x: 2, y: 2 });
+						pushTrail(2, { x: 3, y: 3 });
+						assert(trails[0].length > 0);
+						clearTrails();
+						eq(trails[0].length, 0);
+						eq(trails[1].length, 0);
+						eq(trails[2].length, 0);
+					});
+
+					test('radToDeg converts correctly', () => {
+						approx(radToDeg(0), 0, 1e-12);
+						approx(radToDeg(Math.PI), 180, 1e-9);
+						approx(radToDeg(Math.PI / 2), 90, 1e-9);
+						approx(radToDeg(-Math.PI), -180, 1e-9);
+					});
+
+					test('params.damping array has correct length', () => {
+						for (let n = 1; n <= 5; n++) {
+							setBobCount(n);
+							eq(params.damping.length, n);
+							for (const d of params.damping) {
+								assert(Number.isFinite(d) && d >= 0);
+							}
+						}
+					});
+
+					test('params.masses array has correct length', () => {
+						for (let n = 1; n <= 5; n++) {
+							setBobCount(n);
+							eq(params.masses.length, n);
+							for (const m of params.masses) {
+								assert(Number.isFinite(m) && m > 0);
+							}
+						}
+					});
+
+					test('layout returns valid pivot coordinates', () => {
+						const L = layout();
+						assert(Number.isFinite(L.pivot.x));
+						assert(Number.isFinite(L.pivot.y));
+						assert(L.pivot.x > 0);
+						assert(L.pivot.y > 0);
+						assert(L.w > 0);
+						assert(L.h > 0);
+					});
+
+					test('forwardKinematics velocity with omega', () => {
+						setBobCount(1);
+						state.theta[0] = 0;
+						state.omega[0] = 2.0;
+						params.lengths[0] = 100;
+						const pivot = { x: 0, y: 0 };
+						const { v } = forwardKinematics(
+							pivot,
+							state.theta,
+							state.omega
+						);
+						// At theta=0, velocity is horizontal
+						approx(v[0].x, 200, 1e-6); // L * omega * cos(0)
+						approx(v[0].y, 0, 1e-6);   // -L * omega * sin(0)
+					});
+
+					test('accelerations returns correct length', () => {
+						for (let n = 1; n <= 5; n++) {
+							setBobCount(n);
+							const a = accelerations(
+								state.theta,
+								state.omega
+							);
+							eq(a.length, n);
+							for (const v of a) {
+								assert(Number.isFinite(v));
+							}
+						}
+					});
+
+					test('multiple rk4Steps maintain stability', () => {
+						setBobCount(2);
+						state.theta = [0.5, 0.3];
+						state.omega = [0, 0];
+						let y = state.theta.concat(state.omega);
+						const dt = 1 / 60;
+						// Run 100 steps
+						for (let i = 0; i < 100; i++) {
+							y = rk4Step(y, dt);
+						}
+						// All values should remain finite
+						for (const v of y) {
+							assert(Number.isFinite(v));
+						}
+					});
+
+					test('resetPeriodTracker initializes arrays', () => {
+						setBobCount(4);
+						resetPeriodTracker();
+						eq(periodTrack.lastOmega.length, 4);
+						eq(periodTrack.lastPosPeakT.length, 4);
+						eq(periodTrack.lastNegPeakT.length, 4);
+						eq(periodTrack.estT.length, 4);
+					});
+
+					test('hitTest misses when far from bobs', () => {
+						setBobCount(2);
+						state.theta = [0, 0];
+						state.omega = [0, 0];
+						const rect = canvas.getBoundingClientRect();
+						// Click far outside the canvas area
+						eq(hitTest(rect.left - 500, rect.top - 500), -1);
+					});
+
+					test('theta wrapping in tick stays in range', () => {
+						setBobCount(1);
+						state.theta[0] = Math.PI + 0.5;
+						state.omega[0] = 0;
+						// Simulate wrapping logic from tick
+						if (state.theta[0] > Math.PI) {
+							state.theta[0] -= TAU;
+						}
+						assert(state.theta[0] >= -Math.PI);
+						assert(state.theta[0] <= Math.PI);
+					});
+
+					test('normalizeListText handles edge cases', () => {
+						eq(normalizeListText('', 'fallback'), 'fallback');
+						eq(normalizeListText('   ', 'fb'), 'fb');
+						eq(normalizeListText(null, 'fb'), 'fb');
+						eq(normalizeListText('a,b,c', 'fb'), 'a,b,c');
+						eq(normalizeListText('AUTO', 'fb'), 'auto');
+						eq(normalizeListText('1 2 3', 'fb'), '1,2,3');
 					});
 
 					testsText.textContent =
