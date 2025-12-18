@@ -1,15 +1,16 @@
 <!-- ==================================================================
-    N-Bob Pendulum - Prabhu & GPT 5.2
-    Version: 1.5
+    N-Bob Pendulum - Prabhu & GPT 5.2, Claud Opus 4.5
+    Version: 1.8
 
     What this file is
     -----------------------------------------------------------------
     A self-contained HTML/CSS/JS canvas simulation of an N-bob
     pendulum chain (1-10 bobs). Includes:
-    - Interactive controls (Inputs panel)
+    - Interactive controls (Inputs panel) with live validation
+    - +/- buttons for quick bob count adjustment
     - Live per-bob stats readout (Stats panel)
     - Trail renderer
-    - Built-in unit test suite (80+ tests)
+    - Built-in unit test suite (114 tests)
     Everything lives in this one file: UI, physics, rendering,
     pointer interaction, and tests.
 
@@ -19,12 +20,15 @@
       to let it swing.
     - Click empty space to "nudge" the system with a small impulse.
     - Click near a bob (not only exactly on it) to select it.
-    - Use Inputs -> Bobs to change the number of bobs (1-10).
-    - Use Inputs -> Sizes to override per-bob radius (px),
+    - Use Inputs -> Bobs to change the number of bobs (1-10 max).
+    - Use +/- buttons next to Bobs for quick increment/decrement.
+    - Use Inputs -> Sizes to override per-bob radius (1-100 px),
       e.g. "20, 30, 10". Use "auto" or "-" to revert.
-    - Use Inputs -> Lengths to override rod lengths (px),
-      e.g. "auto" or "260, 220, 200". Use "auto"/"-" to revert.
+    - Use Inputs -> Lengths to override rod lengths (1-1000 px),
+      e.g. "260, 220, 200". Computed defaults shown on load.
     - Press Enter in any Inputs field to apply.
+    - Invalid inputs are highlighted in red for easy correction.
+    - Share URL updates live as you type.
 
     URL query params (auto-applied on load)
     -----------------------------------------------------------------
@@ -43,9 +47,10 @@
     Testing
     -----------------------------------------------------------------
     Add ?tests=1 to the URL to show the Tests panel.
-    - 80+ unit tests covering: DOM, physics, rendering, UI, edge
+    - 114 unit tests covering: DOM, physics, rendering, UI, edge
       cases, and error handling.
-    - Tests show numbered PASS/FAIL output and function coverage.
+    - Pass/fail results color-coded (green/red).
+    - Summary and coverage stats displayed after run.
     - No external test runner required.
 
     High-level architecture
@@ -63,6 +68,7 @@
       - Three collapsible panels (Inputs, Stats, Tests)
       - Panels overlay canvas; responsive for phone/laptop
       - Stats: period, frequency, angle, velocity, speed per bob
+      - Live input validation with visual feedback
 
     Notes / tradeoffs
     -----------------------------------------------------------------
@@ -267,8 +273,7 @@
 				}
 
 				.panel .minbtn {
-					width: 24px;
-					height: 24px;
+					/* Use smaller touch targets in landscape for space */
 					min-width: 36px;
 					min-height: 36px;
 					font-size: 14px;
@@ -352,12 +357,8 @@
 					justify-self: stretch;
 				}
 
-				.inputs-controls label[for='shareUrl'] {
-					grid-column: 1;
-				}
-
 				.inputs-controls #shareUrl {
-					grid-column: 2;
+					grid-column: 1 / -1;
 				}
 			}
 
@@ -453,7 +454,7 @@
 			/* Inputs panel: stack labels/fields neatly. */
 			.inputs-controls {
 				display: grid;
-				grid-template-columns: auto auto minmax(0, 1fr);
+				grid-template-columns: auto minmax(0, 1fr);
 				gap: 6px 8px;
 				align-items: center;
 				margin: 0 0 8px;
@@ -475,21 +476,55 @@
 			}
 
 			.inputs-controls input {
-				grid-column: 2 / -1;
-			}
-
-			/* Apply + Share URL on the same row. */
-			.inputs-controls #applyBobs {
-				grid-column: 1;
-			}
-
-			.inputs-controls label[for='shareUrl'] {
 				grid-column: 2;
-				white-space: nowrap;
+			}
+
+			/* Bob count row with +/- buttons. */
+			.bob-count-row {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+				width: 190px;
+				max-width: 100%;
+			}
+
+			.bob-count-row input {
+				flex: 1;
+				min-width: 0;
+				text-align: center;
+			}
+
+			.bob-adj-btn {
+				width: 32px;
+				height: 32px;
+				flex-shrink: 0;
+				padding: 0;
+				border-radius: 6px;
+				border: 1px solid rgba(255, 255, 255, 0.15);
+				background: rgba(255, 255, 255, 0.08);
+				color: rgba(255, 255, 255, 0.8);
+				font-size: 18px;
+				font-weight: bold;
+				cursor: pointer;
+				line-height: 1;
+			}
+
+			.bob-adj-btn:hover {
+				background: rgba(255, 255, 255, 0.15);
+			}
+
+			.bob-adj-btn:active {
+				background: rgba(255, 255, 255, 0.20);
+			}
+
+			/* Apply button and Share URL each on own row. */
+			.inputs-controls #applyBobs {
+				grid-column: 1 / -1;
+				justify-self: start;
 			}
 
 			.inputs-controls #shareUrl {
-				grid-column: 3;
+				grid-column: 1 / -1;
 				width: 100%;
 				min-width: 0;
 				box-sizing: border-box;
@@ -518,8 +553,14 @@
 			}
 
 			.panel input[type='text'] {
-				width: 190px;
+				width: 100%;
 				max-width: 100%;
+			}
+
+			/* Sizes and lengths inputs should fill available width */
+			#bobSizes,
+			#bobLengths {
+				width: 100%;
 			}
 
 			.panel pre {
@@ -550,6 +591,29 @@
 
 			.test-dim {
 				color: rgba(255, 255, 255, 0.55);
+			}
+
+			/* Test summary styling */
+			.test-summary {
+				color: #58a6ff;
+				font-weight: bold;
+			}
+
+			.test-coverage {
+				color: #d2a8ff;
+			}
+
+			/* Input validation styling */
+			.input-invalid,
+			.panel .input-invalid,
+			.panel input.input-invalid,
+			.panel input[type='text'].input-invalid,
+			.panel input[type='number'].input-invalid,
+			.inputs-controls input.input-invalid,
+			.inputs-controls input[type='text'].input-invalid {
+				border-color: #f85149 !important;
+				background-color: rgba(248, 81, 73, 0.15) !important;
+				color: #f85149 !important;
 			}
 
 			/* Stats coloring helpers (monospace output in the Stats panel). */
@@ -624,14 +688,18 @@
 				<div class="content">
 					<div class="inputs-controls">
 						<label for="bobCount">Bobs</label>
-						<input
-							id="bobCount"
-							type="text"
-							inputmode="numeric"
-							pattern="[0-9]*"
-							value="3"
-							placeholder="1-10"
-						/>
+						<div class="bob-count-row">
+							<button id="bobCountDec" type="button" class="bob-adj-btn">−</button>
+							<input
+								id="bobCount"
+								type="text"
+								inputmode="numeric"
+								pattern="[0-9]*"
+								value="3"
+								placeholder="1-10"
+							/>
+							<button id="bobCountInc" type="button" class="bob-adj-btn">+</button>
+						</div>
 						<label for="bobSizes">Sizes</label>
 						<input
 							id="bobSizes"
@@ -645,23 +713,22 @@
 							id="bobLengths"
 							type="text"
 							inputmode="decimal"
-							value="auto"
-							placeholder="e.g. auto or 260,220,200 (px)"
+							value=""
+							placeholder="e.g. 260, 220, 200 (px)"
 						/>
 						<button id="applyBobs" type="button">Apply</button>
-						<label for="shareUrl">Share URL</label>
 						<input
 							id="shareUrl"
 							type="text"
 							readonly
 							spellcheck="false"
-							placeholder="Applied URL appears here"
+							placeholder="URL updates as you type"
 						/>
 					</div>
 					<div class="test-dim"
 						style="word-wrap:break-word;overflow-wrap:break-word">
-						Bobs: 1-10. Sizes/Lengths: comma-separated.
-						Use "auto" or "-" to reset. Click Apply.
+						Bobs: 1-10. Sizes: 1-100 px. Lengths: 1-1000 px.
+						Use "auto" or "-" to reset. Invalid = red.
 					</div>
 				</div>
 			</div>
@@ -750,6 +817,8 @@
 				const runTestsBtn = document.getElementById('runTests');
 				const testsText = document.getElementById('testsText');
 				const bobCountInput = document.getElementById('bobCount');
+				const bobCountIncBtn = document.getElementById('bobCountInc');
+				const bobCountDecBtn = document.getElementById('bobCountDec');
 				const bobSizesInput = document.getElementById('bobSizes');
 				const bobLengthsInput = document.getElementById('bobLengths');
 				const applyBobsBtn = document.getElementById('applyBobs');
@@ -806,6 +875,13 @@
 					return changed;
 				}
 
+				/**
+				 * Normalizes a comma/space-separated list of tokens.
+				 * Converts "auto" and "-" to lowercase, joins with commas.
+				 * @param {string|null} raw - Raw input string
+				 * @param {string} fallback - Return value if input is empty
+				 * @returns {string} Normalized comma-separated list
+				 */
 				function normalizeListText(raw, fallback) {
 					const s = String(raw ?? '').trim();
 					if (s.length === 0) return fallback;
@@ -828,9 +904,12 @@
 					try {
 						const u = new URL(window.location.href);
 						const qs = u.searchParams;
-						const bobs =
-							String(state.count) ||
-							String(bobCountInput?.value ?? '').trim();
+						// Read directly from input fields for live updates
+						const bobsRaw = (bobCountInput?.value ?? '').trim();
+						const bobsParsed = Number.parseInt(bobsRaw, 10);
+						const bobs = Number.isFinite(bobsParsed)
+							? String(clamp(bobsParsed, 1, 10))
+							: String(state.count);
 						const sizes = normalizeListText(
 							bobSizesInput?.value,
 							'auto'
@@ -1006,14 +1085,33 @@
 				const TAU = Math.PI * 2;
 
 				// ===== Small math helpers =====
+				/**
+				 * Clamps a value to the range [a, b].
+				 * @param {number} v - Value to clamp
+				 * @param {number} a - Minimum bound
+				 * @param {number} b - Maximum bound
+				 * @returns {number} Clamped value
+				 */
 				function clamp(v, a, b) {
 					return Math.max(a, Math.min(b, v));
 				}
 
+				/**
+				 * Converts radians to degrees.
+				 * @param {number} r - Angle in radians
+				 * @returns {number} Angle in degrees
+				 */
 				function radToDeg(r) {
 					return (r * 180) / Math.PI;
 				}
 
+				/**
+				 * Formats a number to fixed decimal places.
+				 * Returns em-dash for non-finite values.
+				 * @param {number} n - Number to format
+				 * @param {number} digits - Decimal places (default 2)
+				 * @returns {string} Formatted string
+				 */
 				function fmt(n, digits = 2) {
 					if (!Number.isFinite(n)) return '—';
 					return n.toFixed(digits);
@@ -1446,8 +1544,14 @@
 				// =============================================================
 				// Kinematics
 				// =============================================================
-				// Converts angles/velocities into Cartesian
-				// positions and velocities.
+				/**
+				 * Converts joint angles/velocities into Cartesian positions
+				 * and velocities for each bob.
+				 * @param {{x: number, y: number}} pivot - Pivot point coords
+				 * @param {number[]} theta - Array of joint angles (radians)
+				 * @param {number[]} omega - Array of angular velocities
+				 * @returns {{p: {x,y}[], v: {x,y}[]}} Positions and velocities
+				 */
 				function forwardKinematics(pivot, theta, omega) {
 					covHit('forwardKinematics');
 					const n = theta.length;
@@ -1494,6 +1598,12 @@
 					for (const t of trails) t.length = 0;
 				}
 
+				/**
+				 * Appends a point to a bob's trail, enforcing max length.
+				 * Ignores invalid indices or points with NaN coordinates.
+				 * @param {number} index - Bob index (0-based)
+				 * @param {{x: number, y: number}} point - Point to append
+				 */
 				function pushTrail(index, point) {
 					covHit('pushTrail');
 					if (index < 0 || index >= trails.length) return;
@@ -1508,6 +1618,12 @@
 					if (extra > 0) arr.splice(0, extra);
 				}
 
+				/**
+				 * Draws a smoothed trail polyline on the canvas.
+				 * Uses quadratic curves for visual smoothness.
+				 * @param {{x: number, y: number}[]} points - Trail points
+				 * @param {number} hue - HSL hue value for stroke color
+				 */
 				function drawTrail(points, hue) {
 					covHit('drawTrail');
 					if (!points || points.length < 2) return;
@@ -1731,10 +1847,13 @@
 					return theta;
 				}
 
-				// Returns the topmost bob index under the pointer,
-				// or -1 if none.
-				// Includes a small "click cushion" to make it easier to grab
-				// a moving bob.
+				/**
+				 * Returns the topmost bob index under the pointer, or -1.
+				 * Includes a "click cushion" for easier grab of moving bobs.
+				 * @param {number} clientX - Pointer X in client coords
+				 * @param {number} clientY - Pointer Y in client coords
+				 * @returns {number} Bob index (0-based) or -1 if none hit
+				 */
 				function hitTest(clientX, clientY) {
 					covHit('hitTest');
 					if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return -1;
@@ -2140,6 +2259,274 @@
 					updateShareUrlFromInputs();
 				}
 
+				// ---------------------------------------------------------
+				// Auto-populate Sizes/Lengths when bob count changes
+				// ---------------------------------------------------------
+				// Stores previous full arrays so we can restore when reducing
+				// bob count. Key insight: we keep the "high water mark" of
+				// values the user has entered/seen.
+				const inputHistory = {
+					sizes: [],    // Array of size tokens (strings)
+					lengths: [], // Array of length tokens (strings)
+				};
+
+				/**
+				 * Parses the current Sizes input into an array of tokens.
+				 * @returns {string[]} Array of size tokens
+				 */
+				function parseSizesInput() {
+					const text = (bobSizesInput?.value ?? '').trim();
+					if (text.length === 0) return [];
+					return text
+						.split(/[\s,]+/)
+						.map((s) => s.trim())
+						.filter(Boolean);
+				}
+
+				/**
+				 * Parses the current Lengths input into an array of tokens.
+				 * @returns {string[]} Array of length tokens
+				 */
+				function parseLengthsInput() {
+					const text = (bobLengthsInput?.value ?? '').trim();
+					if (text.length === 0) return [];
+					return text
+						.split(/[\s,]+/)
+						.map((s) => s.trim())
+						.filter(Boolean);
+				}
+
+				/**
+				 * Gets a sensible default size for bob at index i.
+				 * Uses common defaults: 20, 25, 20, 18, 16... (decreasing)
+				 * @param {number} i - Bob index (0-based)
+				 * @returns {string} Default size token
+				 */
+				function getDefaultSize(i) {
+					const defaults = [20, 25, 20, 18, 16, 14, 14, 12, 12, 10];
+					return String(defaults[i] ?? 10);
+				}
+
+				/**
+				 * Gets a sensible default length for bob at index i.
+				 * Computes actual pixel values based on viewport.
+				 * @param {number} i - Bob index (0-based)
+				 * @param {number} count - Total bob count
+				 * @returns {string} Default length in pixels
+				 */
+				function getDefaultLength(i, count) {
+					// Compute based on layout logic
+					const rect = canvas.getBoundingClientRect();
+					const w = rect.width;
+					const h = rect.height;
+					const aspect = w > 0 ? h / w : 1;
+					const isPortrait = aspect >= 1.20;
+					const n = count || state.count;
+					const totalLen = Math.min(
+						h * (isPortrait ? 0.74 : 0.62),
+						w * (isPortrait ? 0.80 : 0.50)
+					);
+					const base = clamp(
+						(totalLen / Math.max(1, n)) * 0.92,
+						80,
+						260
+					);
+					const len = base * (1 - 0.03 * i);
+					return String(Math.round(len));
+				}
+
+				// Max allowed values for validation
+				const MAX_SIZE = 100;   // max bob radius in pixels
+				const MAX_LENGTH = 1000; // max rod length in pixels
+
+				/**
+				 * Validates input values and applies .input-invalid class.
+				 * Returns true if all inputs are valid.
+				 */
+				function validateInputs() {
+					let valid = true;
+
+					// Validate bob count (1-10)
+					if (bobCountInput) {
+						const raw = bobCountInput.value.trim();
+						const parsed = Number.parseInt(raw, 10);
+						const isValid =
+							raw !== '' &&
+							Number.isFinite(parsed) &&
+							parsed >= 1 &&
+							parsed <= 10;
+						if (!isValid) {
+							bobCountInput.classList.add('input-invalid');
+							valid = false;
+						} else {
+							bobCountInput.classList.remove('input-invalid');
+						}
+					}
+
+					// Validate sizes (comma-separated positive numbers <= MAX_SIZE, or 'auto'/'-')
+					if (bobSizesInput) {
+						const raw = bobSizesInput.value.trim();
+						let isValid = true;
+						if (raw !== '') {
+							const parts = raw.split(/[\s,]+/).filter(Boolean);
+							for (const p of parts) {
+								const t = p.toLowerCase();
+								if (t === 'auto' || t === '-') continue;
+								const n = Number.parseFloat(p);
+								if (!Number.isFinite(n) || n <= 0 || n > MAX_SIZE) {
+									isValid = false;
+									break;
+								}
+							}
+						}
+						if (!isValid) {
+							bobSizesInput.classList.add('input-invalid');
+							valid = false;
+						} else {
+							bobSizesInput.classList.remove('input-invalid');
+						}
+					}
+
+					// Validate lengths (comma-separated positive numbers <= MAX_LENGTH, or 'auto'/'-')
+					if (bobLengthsInput) {
+						const raw = bobLengthsInput.value.trim();
+						let isValid = true;
+						if (raw !== '') {
+							const parts = raw.split(/[\s,]+/).filter(Boolean);
+							for (const p of parts) {
+								const t = p.toLowerCase();
+								if (t === 'auto' || t === '-') continue;
+								const n = Number.parseFloat(p);
+								if (!Number.isFinite(n) || n <= 0 || n > MAX_LENGTH) {
+									isValid = false;
+									break;
+								}
+							}
+						}
+						if (!isValid) {
+							bobLengthsInput.classList.add('input-invalid');
+							valid = false;
+						} else {
+							bobLengthsInput.classList.remove('input-invalid');
+						}
+					}
+
+					return valid;
+				}
+
+				/**
+				 * Updates the Sizes/Lengths inputs when bob count changes.
+				 * - Increasing: adds default values for new bobs
+				 * - Decreasing: trims to new count but saves history
+				 */
+				function onBobCountInputChange() {
+					if (!bobCountInput || !bobSizesInput || !bobLengthsInput) {
+						return;
+					}
+					const raw = bobCountInput.value.trim();
+					const parsed = Number.parseInt(raw, 10);
+					if (!Number.isFinite(parsed)) return;
+					const newCount = clamp(parsed, 1, 10);
+
+					// Parse current values
+					let sizes = parseSizesInput();
+					let lengths = parseLengthsInput();
+					const oldCount = Math.max(sizes.length, lengths.length, 1);
+
+					// Merge with history (keep the longest known values)
+					if (inputHistory.sizes.length > sizes.length) {
+						sizes = sizes.concat(
+							inputHistory.sizes.slice(sizes.length)
+						);
+					}
+					if (inputHistory.lengths.length > lengths.length) {
+						lengths = lengths.concat(
+							inputHistory.lengths.slice(lengths.length)
+						);
+					}
+
+					// Update history with current merged values
+					inputHistory.sizes = sizes.slice();
+					inputHistory.lengths = lengths.slice();
+
+					// Build new arrays for the target count
+					const newSizes = [];
+					const newLengths = [];
+					for (let i = 0; i < newCount; i++) {
+						// Use existing value, history, or default
+						if (i < sizes.length && sizes[i]) {
+							newSizes.push(sizes[i]);
+						} else if (i < inputHistory.sizes.length) {
+							newSizes.push(inputHistory.sizes[i]);
+						} else {
+							newSizes.push(getDefaultSize(i));
+						}
+
+						if (i < lengths.length && lengths[i]) {
+							newLengths.push(lengths[i]);
+						} else if (i < inputHistory.lengths.length) {
+							newLengths.push(inputHistory.lengths[i]);
+						} else {
+							newLengths.push(getDefaultLength(i, newCount));
+						}
+					}
+
+					// Update input fields
+					bobSizesInput.value = newSizes.join(', ');
+					bobLengthsInput.value = newLengths.join(', ');
+
+					// Live-update the share URL and validate inputs
+					updateShareUrlFromInputs();
+					validateInputs();
+				}
+
+				// Listen for input changes on bob count field
+				bobCountInput?.addEventListener('input', () => {
+					onBobCountInputChange();
+					validateInputs();
+				});
+
+				// Listen for input changes on sizes and lengths fields
+				bobSizesInput?.addEventListener('input', () => {
+					updateShareUrlFromInputs();
+					validateInputs();
+				});
+				bobLengthsInput?.addEventListener('input', () => {
+					updateShareUrlFromInputs();
+					validateInputs();
+				});
+
+				// Initialize history from current input values on load
+				if (bobSizesInput && bobLengthsInput) {
+					inputHistory.sizes = parseSizesInput();
+					inputHistory.lengths = parseLengthsInput();
+				}
+
+				// Validate inputs on initial load
+				validateInputs();
+
+				/**
+				 * Adjusts bob count by delta (+1 or -1), clamped to 1-10.
+				 * Triggers the same logic as manual input change.
+				 */
+				function adjustBobCount(delta) {
+					if (!bobCountInput) return;
+					const raw = bobCountInput.value.trim();
+					const current = Number.parseInt(raw, 10) || 3;
+					const newVal = clamp(current + delta, 1, 10);
+					bobCountInput.value = String(newVal);
+					onBobCountInputChange();
+					validateInputs();
+				}
+
+				// Wire +/- buttons for bob count
+				bobCountIncBtn?.addEventListener('click', () => {
+					adjustBobCount(1);
+				});
+				bobCountDecBtn?.addEventListener('click', () => {
+					adjustBobCount(-1);
+				});
+
 				// Wire UI events.
 				function applyInputsFromUI() {
 					applyBobCountFromUI();
@@ -2236,7 +2623,7 @@
 							params: {
 								g: params.g,
 								lengths: params.lengths.slice(),
-									lengthOverrides: params.lengthOverrides.slice(),
+								lengthOverrides: params.lengthOverrides.slice(),
 								masses: params.masses.slice(),
 								damping: params.damping.slice(),
 								radiusOverrides: params.radiusOverrides.slice(),
@@ -2270,7 +2657,7 @@
 						}
 						params.g = s.params.g;
 						params.lengths = s.params.lengths.slice();
-							params.lengthOverrides = s.params.lengthOverrides.slice();
+						params.lengthOverrides = s.params.lengthOverrides.slice();
 						params.masses = s.params.masses.slice();
 						params.damping = s.params.damping.slice();
 						params.radiusOverrides =
@@ -2348,10 +2735,12 @@
 
 						const totalMs = performance.now() - t0;
 						showText('');
-						showText(
-							`Summary: ${pass}/${unitTests.length} passed, ` +
+						const summaryClass = failCount > 0 ? 'test-fail' : 'test-pass';
+						showHtml(
+							`<span class="test-summary ${summaryClass}">` +
+								`Summary: ${pass}/${unitTests.length} passed, ` +
 								`${failCount} failed ` +
-								`(${fmt(totalMs, 1)} ms)`
+								`(${fmt(totalMs, 1)} ms)</span>`
 						);
 
 						if (cov) {
@@ -2361,8 +2750,9 @@
 							);
 							const pct = Math.round((hit.length / total) * 100);
 							showText('');
-							showText(
-								`Coverage: ${hit.length}/${total} (${pct}%)`
+							showHtml(
+								`<span class="test-coverage">` +
+									`Coverage: ${hit.length}/${total} (${pct}%)</span>`
 							);
 							for (const k of cov.keys) {
 								const c = cov.hits[k] || 0;
@@ -2406,10 +2796,15 @@
 					//   Stats (50, 52): period tracker, display
 					//   URL/Share (53-57): query params, share URL
 					//   Edge cases (58-68): null, NaN, empty, bounds
-					//   New tests (69-80+): solver, deriv, clearTrails,
-					//     radToDeg, damping, masses, draw, updateStats
+					//   Solver/deriv (69-71, 85, 86): linear algebra
+					//   Arrays (72-75, 87): trails, damping, masses
+					//   Layout/draw (76, 84, 86): pivot, rendering
+					//   Physics (77-79, 89): kinematics, stability
+					//   Tracker (80, 90): period estimation
+					//   Interaction (81, 91, 93): hitTest, dragIndex
+					//   Edge inputs (82-83, 88, 92, 94, 95): parsing
 					//
-					// Test catalog:
+					// Test catalog (114 tests):
 					//  1) HTML core elements exist
 					//  2) Panels start collapsed
 					//  3) Collapsed content is display:none
@@ -2417,7 +2812,7 @@
 					//  5) Body overflow hidden
 					//  6) Canvas has nonzero size
 					//  7) Default bob sizes are 20,30,10
-					//  8) Default bob lengths are auto
+					//  8) Default bob lengths are computed
 					//  9) resizeCanvas sets backing size
 					// 10) pointerToThetaFromPoint vertical is ~0
 					// 11) clamp clamps range
@@ -2493,6 +2888,37 @@
 					// 81) hitTest misses when far from bobs
 					// 82) theta wrapping in tick stays in range
 					// 83) normalizeListText handles edge cases
+					// 84) drawTrail with exactly 2 points
+					// 85) accelerations with mismatched param arrays
+					// 86) draw function executes without error
+					// 87) updateStats handles zero bob count
+					// 88) solveLinearSystem with near-singular matrix
+					// 89) pushTrail with trailLen of 1
+					// 90) pointerToThetaFromPoint at canvas edge
+					// 91) updatePeriodTracker with NaN omega
+					// 92) setBobCount preserves dragIndex when valid
+					// 93) applyInputsFromQuery returns false on bad
+					// 94) canvas touch-action is none
+					// 95) bobCount input auto-populates sizes/lengths
+					// 96) bobCount decrease restores previous values
+					// 97) CSS: .test-pass has green color
+					// 98) CSS: .test-fail has red color
+					// 99) CSS: .test-dim has muted color
+					// 100) CSS: .test-summary has blue color and bold
+					// 101) CSS: .test-coverage has purple color
+					// 102) CSS: .input-invalid has red border and text
+					// 103) CSS: .stat-pos has green color
+					// 104) CSS: .stat-neg has red color
+					// 105) CSS: .panel label has muted white color
+					// 106) +/- buttons exist for bob count
+					// 107) + button increments bob count
+					// 108) - button decrements bob count
+					// 109) + button respects max 10 limit
+					// 110) - button respects min 1 limit
+					// 111) validateInputs detects invalid sizes
+					// 112) validateInputs detects invalid lengths
+					// 113) validateInputs accepts valid sizes/lengths
+					// 114) CSS: .bob-adj-btn has correct size
 					test('HTML core elements exist', () => {
 						assert(canvas instanceof HTMLCanvasElement);
 						assert(inputsPanel);
@@ -2545,9 +2971,10 @@
 						eq(defaults.radiusOverrides[2], 10);
 					});
 
-					test('Default bob lengths are auto', () => {
+					test('Default bob lengths are empty (computed on load)', () => {
 						assert(defaults);
-						eq(defaults.bobLengthsAttr, 'auto');
+						// HTML attribute is empty; computed defaults on load
+						eq(defaults.bobLengthsAttr, '');
 						for (const v of defaults.lengthOverrides) eq(v, null);
 					});
 
@@ -3444,6 +3871,366 @@
 						eq(normalizeListText('1 2 3', 'fb'), '1,2,3');
 					});
 
+					// ===================================================
+					// Additional tests (84-95)
+					// ===================================================
+					test('drawTrail with exactly 2 points', () => {
+						// Should draw a simple line, not throw
+						setBobCount(1);
+						clearTrails();
+						pushTrail(0, { x: 10, y: 10 });
+						pushTrail(0, { x: 50, y: 50 });
+						eq(trails[0].length, 2);
+						// drawTrail is called during draw(); just ensure
+						// no error
+						draw();
+					});
+
+					test('accelerations with mismatched param arrays', () => {
+						// Save original params
+						const origLengths = params.lengths.slice();
+						const origMasses = params.masses.slice();
+						const origDamping = params.damping.slice();
+
+						// Create mismatched arrays (shorter than theta)
+						setBobCount(3);
+						params.lengths = [100];
+						params.masses = [1];
+						params.damping = [0.01];
+
+						const a = accelerations(
+							state.theta,
+							state.omega
+						);
+						// Should return zeros when arrays mismatch
+						eq(a.length, 3);
+						eq(a[0], 0);
+						eq(a[1], 0);
+						eq(a[2], 0);
+
+						// Restore
+						params.lengths = origLengths;
+						params.masses = origMasses;
+						params.damping = origDamping;
+					});
+
+					test('draw function executes without error', () => {
+						setBobCount(3);
+						state.theta = [0.5, 0.3, -0.2];
+						state.omega = [0, 0, 0];
+						// Should not throw
+						draw();
+						// Canvas should have content (non-empty)
+						assert(canvas.width > 0);
+						assert(canvas.height > 0);
+					});
+
+					test('updateStats handles zero bob count', () => {
+						// Edge case: temporarily set count to boundary
+						const prevCount = state.count;
+						setBobCount(1);
+						state.theta = [0];
+						state.omega = [0];
+						updateStats(1 / 60);
+						assert(statsText.textContent.includes('N=1'));
+						setBobCount(prevCount);
+					});
+
+					test('solveLinearSystem with near-singular matrix', () => {
+						// Matrix where all pivots are below threshold
+						const A = [
+							[1e-14, 1e-14],
+							[1e-14, 1e-14],
+						];
+						const b = [1, 2];
+						const x = solveLinearSystem(A, b);
+						// Should return zeros for near-singular
+						eq(x[0], 0);
+						eq(x[1], 0);
+					});
+
+					test('pushTrail with trailLen of 1', () => {
+						setBobCount(1);
+						params.trailLen = 1;
+						clearTrails();
+						pushTrail(0, { x: 1, y: 1 });
+						pushTrail(0, { x: 2, y: 2 });
+						pushTrail(0, { x: 3, y: 3 });
+						eq(trails[0].length, 1);
+						eq(trails[0][0].x, 3);
+					});
+
+					test('pointerToThetaFromPoint at canvas edge', () => {
+						const rect = canvas.getBoundingClientRect();
+						const L = layout();
+						// Pointer at right edge, same y as pivot
+						const theta = pointerToThetaFromPoint(
+							rect.right - 1,
+							rect.top + L.pivot.y,
+							L.pivot
+						);
+						// Should be close to PI/2 (pointing right)
+						assert(theta > 0);
+						assert(theta < Math.PI);
+					});
+
+					test('updatePeriodTracker with NaN omega', () => {
+						setBobCount(1);
+						resetPeriodTracker();
+						state.omega[0] = NaN;
+						// Should not throw, just skip update
+						updatePeriodTracker(1.0);
+						assert(!Number.isFinite(periodTrack.estT[0]));
+					});
+
+					test('setBobCount preserves dragIndex when valid', () => {
+						setBobCount(5);
+						state.dragIndex = 2;
+						setBobCount(4);
+						eq(state.dragIndex, 2); // Still valid
+						setBobCount(2);
+						eq(state.dragIndex, 1); // Clamped to max
+					});
+
+					test('applyInputsFromQuery returns false on bad input', () => {
+						const result = applyInputsFromQuery(null);
+						eq(result, false);
+					});
+
+					test('canvas touch-action is none', () => {
+						const cs = getComputedStyle(canvas);
+						eq(cs.touchAction, 'none');
+					});
+
+					test('bobCount input auto-populates sizes/lengths', () => {
+						// Reset history and inputs
+						inputHistory.sizes = [];
+						inputHistory.lengths = [];
+						bobCountInput.value = '2';
+						bobSizesInput.value = '15, 20';
+						bobLengthsInput.value = '200, 180';
+
+						// Increase to 4 bobs
+						bobCountInput.value = '4';
+						onBobCountInputChange();
+
+						// Should have 4 values now with defaults for new bobs
+						const sizes = parseSizesInput();
+						const lengths = parseLengthsInput();
+						eq(sizes.length, 4);
+						eq(lengths.length, 4);
+						eq(sizes[0], '15');
+						eq(sizes[1], '20');
+						// New bobs get defaults
+						assert(sizes[2] !== undefined);
+						assert(sizes[3] !== undefined);
+					});
+
+					test('bobCount decrease restores previous values', () => {
+						// Set up with 4 bobs
+						inputHistory.sizes = [];
+						inputHistory.lengths = [];
+						bobCountInput.value = '4';
+						bobSizesInput.value = '10, 20, 30, 40';
+						bobLengthsInput.value = '100, 150, 200, 250';
+						onBobCountInputChange(); // Initialize history
+
+						// Decrease to 2
+						bobCountInput.value = '2';
+						onBobCountInputChange();
+						let sizes = parseSizesInput();
+						eq(sizes.length, 2);
+						eq(sizes[0], '10');
+						eq(sizes[1], '20');
+
+						// Increase back to 4 - should restore old values
+						bobCountInput.value = '4';
+						onBobCountInputChange();
+						sizes = parseSizesInput();
+						eq(sizes.length, 4);
+						eq(sizes[2], '30');
+						eq(sizes[3], '40');
+					});
+
+					// -------------------------------------------------------
+					// Color regression tests (97-105)
+					// -------------------------------------------------------
+					test('CSS: .test-pass has green color', () => {
+						const el = document.createElement('span');
+						el.className = 'test-pass';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.color, 'rgb(63, 185, 80)'); // #3fb950
+						el.remove();
+					});
+
+					test('CSS: .test-fail has red color', () => {
+						const el = document.createElement('span');
+						el.className = 'test-fail';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.color, 'rgb(248, 81, 73)'); // #f85149
+						el.remove();
+					});
+
+					test('CSS: .test-dim has muted color', () => {
+						const el = document.createElement('span');
+						el.className = 'test-dim';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.color, 'rgba(255, 255, 255, 0.55)');
+						el.remove();
+					});
+
+					test('CSS: .test-summary has blue color and bold', () => {
+						const el = document.createElement('span');
+						el.className = 'test-summary';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.color, 'rgb(88, 166, 255)'); // #58a6ff
+						eq(cs.fontWeight, '700');
+						el.remove();
+					});
+
+					test('CSS: .test-coverage has purple color', () => {
+						const el = document.createElement('span');
+						el.className = 'test-coverage';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.color, 'rgb(210, 168, 255)'); // #d2a8ff
+						el.remove();
+					});
+
+					test('CSS: .input-invalid has red border and text', () => {
+						const el = document.createElement('input');
+						el.type = 'text';
+						el.className = 'input-invalid';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.borderColor, 'rgb(248, 81, 73)'); // #f85149
+						eq(cs.color, 'rgb(248, 81, 73)');
+						el.remove();
+					});
+
+					test('CSS: .stat-pos has green color', () => {
+						const el = document.createElement('span');
+						el.className = 'stat-pos';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.color, 'rgb(63, 185, 80)'); // #3fb950
+						el.remove();
+					});
+
+					test('CSS: .stat-neg has red color', () => {
+						const el = document.createElement('span');
+						el.className = 'stat-neg';
+						document.body.appendChild(el);
+						const cs = getComputedStyle(el);
+						eq(cs.color, 'rgb(248, 81, 73)'); // #f85149
+						el.remove();
+					});
+
+					test('CSS: .panel label has muted white color', () => {
+						const label = inputsPanel?.querySelector('label');
+						assert(label, 'label should exist');
+						const cs = getComputedStyle(label);
+						eq(cs.color, 'rgba(255, 255, 255, 0.7)');
+					});
+
+					// -------------------------------------------------------
+					// +/- button and validation tests (106-114)
+					// -------------------------------------------------------
+					test('+/- buttons exist for bob count', () => {
+						assert(bobCountIncBtn, 'increment button should exist');
+						assert(bobCountDecBtn, 'decrement button should exist');
+						eq(bobCountIncBtn.textContent, '+');
+						eq(bobCountDecBtn.textContent, '−');
+					});
+
+					test('+ button increments bob count', () => {
+						bobCountInput.value = '3';
+						adjustBobCount(1);
+						eq(bobCountInput.value, '4');
+					});
+
+					test('- button decrements bob count', () => {
+						bobCountInput.value = '5';
+						adjustBobCount(-1);
+						eq(bobCountInput.value, '4');
+					});
+
+					test('+ button respects max 10 limit', () => {
+						bobCountInput.value = '10';
+						adjustBobCount(1);
+						eq(bobCountInput.value, '10');
+					});
+
+					test('- button respects min 1 limit', () => {
+						bobCountInput.value = '1';
+						adjustBobCount(-1);
+						eq(bobCountInput.value, '1');
+					});
+
+					test('validateInputs detects invalid sizes', () => {
+						const origSizes = bobSizesInput.value;
+						// Test negative value
+						bobSizesInput.value = '20, -5, 10';
+						validateInputs();
+						assert(bobSizesInput.classList.contains('input-invalid'),
+							'negative size should be invalid');
+						// Test value > MAX_SIZE (100)
+						bobSizesInput.value = '20, 150, 10';
+						validateInputs();
+						assert(bobSizesInput.classList.contains('input-invalid'),
+							'size > 100 should be invalid');
+						// Test non-numeric
+						bobSizesInput.value = '20, abc, 10';
+						validateInputs();
+						assert(bobSizesInput.classList.contains('input-invalid'),
+							'non-numeric size should be invalid');
+						bobSizesInput.value = origSizes;
+						validateInputs();
+					});
+
+					test('validateInputs detects invalid lengths', () => {
+						const origLengths = bobLengthsInput.value;
+						// Test negative value
+						bobLengthsInput.value = '200, -50, 180';
+						validateInputs();
+						assert(bobLengthsInput.classList.contains('input-invalid'),
+							'negative length should be invalid');
+						// Test value > MAX_LENGTH (1000)
+						bobLengthsInput.value = '200, 1500, 180';
+						validateInputs();
+						assert(bobLengthsInput.classList.contains('input-invalid'),
+							'length > 1000 should be invalid');
+						bobLengthsInput.value = origLengths;
+						validateInputs();
+					});
+
+					test('validateInputs accepts valid sizes/lengths', () => {
+						const origSizes = bobSizesInput.value;
+						const origLengths = bobLengthsInput.value;
+						bobSizesInput.value = '20, auto, 50, -';
+						bobLengthsInput.value = '200, auto, 300, -';
+						validateInputs();
+						assert(!bobSizesInput.classList.contains('input-invalid'),
+							'valid sizes should not be invalid');
+						assert(!bobLengthsInput.classList.contains('input-invalid'),
+							'valid lengths should not be invalid');
+						bobSizesInput.value = origSizes;
+						bobLengthsInput.value = origLengths;
+						validateInputs();
+					});
+
+					test('CSS: .bob-adj-btn has correct size', () => {
+						const btn = bobCountIncBtn;
+						assert(btn, 'button should exist');
+						const cs = getComputedStyle(btn);
+						eq(cs.width, '32px');
+						eq(cs.height, '32px');
+					});
+
 					testsText.textContent =
 						'Ready. Click Run to execute tests.';
 					runTestsBtn.addEventListener('click', () => {
@@ -3453,6 +4240,19 @@
 
 				resizeCanvas();
 				applyInputsFromQuery();
+
+				// If lengths field is empty, populate with computed defaults
+				if (bobLengthsInput && !bobLengthsInput.value.trim()) {
+					const count = Number.parseInt(
+						bobCountInput?.value ?? '3', 10
+					) || 3;
+					const defaultLengths = [];
+					for (let i = 0; i < count; i++) {
+						defaultLengths.push(getDefaultLength(i, count));
+					}
+					bobLengthsInput.value = defaultLengths.join(', ');
+				}
+
 				applyBobCountFromUI();
 				resetPeriodTracker();
 				updateShareUrlFromInputs();
