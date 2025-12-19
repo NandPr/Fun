@@ -1,47 +1,43 @@
 <!--
 ========================================================================
 3D Dice Roller - Prabhu & GPT 5.2, Claude Opus 4.5
-Version: 1.2
+Version: 1.3
 
 Description
 ------------------------------------------------------------------------
-A self-contained HTML/CSS/JS application featuring a realistic 3D dice
-that can be rolled with click or keyboard interaction. The dice uses
-CSS 3D transforms to create a true cube with all six faces showing
-proper pip (dot) patterns.
+A self-contained HTML/CSS/JS dice (and coin) roller that supports face
+counts from 2 to 20. It renders:
+- D6 as a true CSS 3D cube with pip faces
+- D2 as a golden 3D coin with Heads/Tails
+- D3–D20 (except 6) as an extruded polygon silhouette with depth
 
 Features
 ------------------------------------------------------------------------
-- Pure white 3D dice with realistic shadows and depth
-- Natural ease-out physics: max speed at start, smooth deceleration
-- Full 3-axis rotation (X, Y, Z) for realistic tumbling
 - Click or press Space/Enter to roll; click mid-roll to restart
-- Unique random pip colors per face (no duplicates)
-- Subtle idle floating animation before first roll
-- Golden result display showing the rolled number (early reveal)
-- Hover glow effect for interactivity feedback
-- Responsive shadow that reacts to rolling state
-- History tab (session rolls + distribution) in bottom-left
-- Optional rolling sound (heavy plastic on wood)
-    - Off by default; enable via checkbox in History tab
-- Built-in unit test suite (add ?tests=1 to URL)
+- Natural ease-out physics (monotone quartic) with early reveal (~70%)
+- Responsive shadow, hover glow, and subtle idle animation
+- Details tab (bottom-left) with:
+    - Last 10 results and per-face distribution
+    - Sound toggle (off by default)
+    - Faces input (2–20) and a Heads/Tails hint for D2
+- Confetti burst on max roll (e.g. 6 on D6, 20 on D20, Tails on D2)
+- Optional WebAudio sound:
+    - Dice: plastic-on-wood bounce/impact model
+    - Coin: metallic tings + clinks + filtered noise
+- Built-in unit tests (add `?tests=1` to the URL)
 
 Technical Details
 ------------------------------------------------------------------------
-- CSS 3D transforms for cube construction
-- RequestAnimationFrame for smooth 60fps animation
-- Custom easing functions for realistic deceleration
-- WebAudio synthesized rolling sound (no external audio files)
-- No external dependencies - fully self-contained
+- CSS 3D transforms + RequestAnimationFrame animation
+- No external dependencies; single-file HTML
 
 How to Use
 ------------------------------------------------------------------------
 1. Open in a browser
-2. Click the dice or press Space/Enter to roll
-3. Watch the physics-based animation
-4. Result appears during slowdown (~70% progress)
-5. Use History tab to see recent rolls and distribution
-6. Add ?tests=1 to URL to run unit tests
+2. Click the die/coin or press Space/Enter to roll
+3. Open Details to change Faces and view History/Distribution
+4. (Optional) Enable sound in Details
+5. Add `?tests=1` to run unit tests
 
 ========================================================================
 -->
@@ -87,6 +83,268 @@ How to Use
             height: 200px;
             perspective: 800px;
             cursor: pointer;
+            position: relative;
+        }
+
+        /* ============================================================
+           Flat Die Display (used for 2-20 faces except 6)
+           ============================================================ */
+        .die2d {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            --die2d-rot: 0deg;
+            --die2d-clip: none;
+            border-radius: 32px;
+            background: linear-gradient(
+                135deg,
+                #ffffff 0%,
+                #f8f8f8 25%,
+                #ececec 50%,
+                #e0e0e0 75%,
+                #d4d4d4 100%
+            );
+            border: 1px solid #c0c0c0;
+            box-shadow:
+                inset 3px 3px 8px rgba(255, 255, 255, 0.9),
+                inset -1px -1px 6px rgba(255, 255, 255, 0.6),
+                inset -8px -8px 16px rgba(0, 0, 0, 0.15),
+                inset 8px 8px 16px rgba(0, 0, 0, 0.05),
+                0 8px 20px rgba(0, 0, 0, 0.2);
+            clip-path: var(--die2d-clip);
+            transform:
+                rotate(var(--die2d-rot))
+                rotateX(12deg)
+                rotateY(-12deg);
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+        }
+
+        .die2d::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            clip-path: var(--die2d-clip);
+            background: linear-gradient(
+                135deg,
+                #d6d6d6 0%,
+                #cfcfcf 25%,
+                #c6c6c6 60%,
+                #bdbdbd 100%
+            );
+            border: 1px solid rgba(0, 0, 0, 0.18);
+            box-shadow:
+                inset -6px -6px 14px rgba(0, 0, 0, 0.10),
+                0 12px 18px rgba(0, 0, 0, 0.22);
+            transform: translate(10px, 10px);
+            z-index: -1;
+        }
+
+        .die2d.rolling {
+            transition: none;
+        }
+
+        .die2d-value {
+            font-size: 64px;
+            font-weight: bold;
+            color: rgba(0, 0, 0, 0.85);
+            line-height: 1;
+        }
+
+        .die2d-label {
+            margin-top: 8px;
+            font-size: 14px;
+            letter-spacing: 1px;
+            color: rgba(0, 0, 0, 0.55);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        /* ============================================================
+           Coin Display (used for 2 faces)
+           ============================================================ */
+        .coin {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            --coin-rot: 0deg;
+            --coin-y: 0px;
+            --coin-scale: 1;
+            --coin-thickness: 24px;
+            transform-style: preserve-3d;
+            transform:
+                translateY(var(--coin-y))
+                scale(var(--coin-scale))
+                rotateZ(8deg)
+                rotateX(var(--coin-rot))
+                rotateY(-20deg);
+            transition: transform 0.1s ease-out;
+        }
+
+        .coin.rolling {
+            transition: none;
+        }
+
+        /* Cylinder edge band (side wall) */
+        .coin::before {
+            content: '';
+            position: absolute;
+            left: 7%;
+            top: 50%;
+            width: 86%;
+            height: var(--coin-thickness);
+            border-radius: 999px;
+            background:
+                repeating-linear-gradient(
+                    90deg,
+                    rgba(255, 255, 255, 0.18) 0 2px,
+                    rgba(0, 0, 0, 0.18) 2px 4px
+                ),
+                linear-gradient(
+                    180deg,
+                    rgba(80, 45, 0, 0.95),
+                    rgba(255, 215, 0, 0.95),
+                    rgba(120, 65, 0, 0.98)
+                );
+            box-shadow:
+                0 16px 22px rgba(0, 0, 0, 0.24),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.26);
+            transform:
+                translateY(-50%)
+                rotateX(90deg);
+            z-index: 0;
+            backface-visibility: hidden;
+        }
+
+        .coin-face {
+            position: absolute;
+            inset: 7%;
+            width: 86%;
+            height: 86%;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backface-visibility: hidden;
+            z-index: 2;
+            border: 1px solid rgba(115, 70, 0, 0.55);
+            background:
+                radial-gradient(
+                    circle at 32% 28%,
+                    rgba(255, 255, 255, 0.72) 0%,
+                    rgba(255, 215, 0, 0.98) 30%,
+                    rgba(205, 135, 0, 0.98) 62%,
+                    rgba(125, 70, 0, 0.98) 100%
+                ),
+                conic-gradient(
+                    from 210deg,
+                    rgba(255, 255, 255, 0.08),
+                    rgba(0, 0, 0, 0.10),
+                    rgba(255, 255, 255, 0.10)
+                );
+            box-shadow:
+                inset 16px 16px 26px rgba(255, 255, 255, 0.12),
+                inset -18px -18px 28px rgba(0, 0, 0, 0.30),
+                inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+        }
+
+        .coin-face::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background:
+                radial-gradient(
+                    circle at center,
+                    transparent 0 56%,
+                    rgba(255, 255, 255, 0.16) 56% 60%,
+                    rgba(0, 0, 0, 0.20) 60% 64%,
+                    transparent 64% 100%
+                ),
+                repeating-conic-gradient(
+                    from 0deg,
+                    rgba(255, 255, 255, 0.18) 0 2deg,
+                    rgba(0, 0, 0, 0.16) 2deg 4deg
+                );
+            opacity: 0.55;
+            pointer-events: none;
+        }
+
+        .coin-face::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background:
+                repeating-linear-gradient(
+                    18deg,
+                    rgba(255, 255, 255, 0.06) 0 1px,
+                    rgba(255, 255, 255, 0.00) 1px 6px
+                );
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        .coin-front {
+            transform: translateZ(calc(var(--coin-thickness) / 2));
+        }
+
+        .coin-back {
+            transform: rotateX(180deg) translateZ(calc(var(--coin-thickness) / 2));
+        }
+
+        .coin-mark {
+            width: 70%;
+            height: 70%;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 78px;
+            font-weight: 900;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: rgba(78, 44, 0, 0.90);
+            background:
+                radial-gradient(
+                    circle at 30% 30%,
+                    rgba(255, 255, 255, 0.18) 0%,
+                    rgba(0, 0, 0, 0.06) 60%,
+                    rgba(0, 0, 0, 0.18) 100%
+                ),
+                radial-gradient(
+                    circle at 70% 75%,
+                    rgba(255, 255, 255, 0.08) 0%,
+                    rgba(255, 255, 255, 0.00) 55%
+                );
+            text-shadow:
+                /* embossed/engraved feel */
+                -1px -1px 0 rgba(255, 255, 255, 0.30),
+                1px 1px 0 rgba(0, 0, 0, 0.36),
+                1px 0 0 rgba(0, 0, 0, 0.18),
+                -1px 0 0 rgba(0, 0, 0, 0.18),
+                0 1px 0 rgba(0, 0, 0, 0.16),
+                0 -1px 0 rgba(255, 255, 255, 0.10),
+                0 3px 4px rgba(0, 0, 0, 0.18);
+            box-shadow:
+                inset 10px 10px 16px rgba(255, 255, 255, 0.12),
+                inset -12px -12px 18px rgba(0, 0, 0, 0.26),
+                inset 0 0 0 2px rgba(0, 0, 0, 0.12),
+                inset 0 0 0 6px rgba(255, 255, 255, 0.05);
+            line-height: 1;
+        }
+
+        /* The glyph 'T' has thinner strokes than 'H' in many fonts.
+           Bump size slightly so it reads equally “embossed”. */
+        .coin-back .coin-mark {
+            font-size: 86px;
+            color: rgba(35, 18, 0, 0.96);
         }
 
         /* ============================================================
@@ -381,6 +639,42 @@ How to Use
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
+        .face-count-control {
+            margin-top: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 14px;
+            user-select: none;
+        }
+
+        .face-count-hint {
+            color: rgba(255, 215, 0, 0.70);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .face-count-control input {
+            width: 84px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(0, 0, 0, 0.18);
+            color: rgba(255, 255, 255, 0.9);
+            outline: none;
+        }
+
+        .face-count-control input:focus {
+            border-color: rgba(255, 215, 0, 0.7);
+        }
+
+        .face-count-control input[aria-invalid="true"],
+        .face-count-control input[aria-invalid="true"]:focus {
+            border-color: rgba(255, 70, 70, 0.95);
+            box-shadow: 0 0 0 2px rgba(255, 70, 70, 0.25);
+        }
+
         /* Golden result number display - instant appearance, no layout shift */
         .result {
             margin-top: 20px;
@@ -627,7 +921,14 @@ How to Use
 
         .history-tab.expanded {
             width: min(280px, calc(100vw - 24px));
-            max-height: min(50vh, 400px);
+            height: min(50vh, 400px);
+            max-width: calc(100vw - 24px);
+            max-height: calc(100vh - 24px);
+            min-width: 220px;
+            min-height: 180px;
+            resize: both;
+            display: flex;
+            flex-direction: column;
         }
 
         .history-tab-header {
@@ -669,10 +970,80 @@ How to Use
 
         .history-tab.expanded .history-content {
             display: block;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 10px;
+            scrollbar-gutter: stable;
+            scrollbar-width: thin;
+            scrollbar-color:
+                rgba(255, 215, 0, 0.28)
+                rgba(0, 0, 0, 0.25);
+        }
+
+        .history-tab.expanded .history-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .history-tab.expanded .history-content::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 10px;
+        }
+
+        .history-tab.expanded .history-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 215, 0, 0.22);
+            border-radius: 10px;
+            border: 1px solid rgba(0, 0, 0, 0.22);
+        }
+
+        .history-tab.expanded .history-content::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 215, 0, 0.30);
+        }
+
+        .history-content .face-count-control {
+            margin-top: 0;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.86);
+        }
+
+        .history-content .face-count-control input {
+            width: 78px;
+        }
+
+        .history-content .face-count-control input::-webkit-inner-spin-button,
+        .history-content .face-count-control input::-webkit-outer-spin-button {
+            opacity: 0.95;
+            background: rgba(255, 215, 0, 0.22);
+            border-radius: 10px;
+            border: 1px solid rgba(0, 0, 0, 0.22);
+        }
+
+        .history-content .face-count-control input::-webkit-inner-spin-button:hover,
+        .history-content .face-count-control input::-webkit-outer-spin-button:hover {
+            background: rgba(255, 215, 0, 0.30);
+        }
+
+        .history-sound-toggle {
+            white-space: nowrap;
         }
 
         .history-section {
             margin-bottom: 12px;
+        }
+
+        .history-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .history-row-title {
+            color: rgba(255, 215, 0, 0.8);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
         }
 
         .history-section-title {
@@ -739,7 +1110,19 @@ How to Use
             height: 100%;
             background: linear-gradient(90deg, #ffd700, #ffaa00);
             border-radius: 3px;
-            transition: width 0.3s ease-out;
+            transition: width 0.3s ease-out, filter 0.2s ease-out;
+        }
+
+        .history-bar-fill.dist-ok {
+            filter: saturate(1.10) brightness(1.02);
+        }
+
+        .history-bar-fill.dist-good {
+            filter: hue-rotate(80deg) saturate(1.15) brightness(1.00);
+        }
+
+        .history-bar-fill.dist-bad {
+            filter: hue-rotate(-95deg) saturate(1.10) brightness(0.98);
         }
 
         .history-bar-percent {
@@ -800,6 +1183,8 @@ How to Use
 
             .history-tab.expanded {
                 width: calc(100vw - 16px);
+                max-width: calc(100vw - 16px);
+                max-height: calc(100vh - 16px);
             }
         }
     </style>
@@ -868,6 +1253,20 @@ How to Use
                 </div>
             </div>
         </div>
+
+        <div class="die2d" id="die2d" aria-hidden="true">
+            <div class="die2d-value" id="die2dValue">6</div>
+            <div class="die2d-label" id="die2dLabel">D6</div>
+        </div>
+
+        <div class="coin" id="coin" aria-hidden="true">
+            <div class="coin-face coin-front">
+                <div class="coin-mark">H</div>
+            </div>
+            <div class="coin-face coin-back">
+                <div class="coin-mark">T</div>
+            </div>
+        </div>
     </div>
 
     <!-- Shadow element for grounding effect -->
@@ -875,6 +1274,19 @@ How to Use
 
     <!-- User instructions -->
     <p class="instructions">Click the dice to roll!</p>
+
+    <div class="face-count-control" id="faceCountControl">
+        <label for="faceCount">Faces:</label>
+        <span class="face-count-hint" id="faceCountHint"></span>
+        <input
+            type="number"
+            id="faceCount"
+            min="2"
+            max="20"
+            step="1"
+            value="6"
+        >
+    </div>
 
     <!-- Result display (hidden until roll completes) -->
     <div class="result" id="result"></div>
@@ -1035,6 +1447,12 @@ How to Use
         const shadow = document.getElementById('shadow');
         const result = document.getElementById('result');
         const scene = document.getElementById('scene');
+        const die2d = document.getElementById('die2d');
+        const coin = document.getElementById('coin');
+        const die2dValue = document.getElementById('die2dValue');
+        const die2dLabel = document.getElementById('die2dLabel');
+        const faceCountInput = document.getElementById('faceCount');
+        const faceCountHint = document.getElementById('faceCountHint');
 
         // ================================================================
         // State Variables
@@ -1043,6 +1461,185 @@ How to Use
         let animationId = null;     // RAF handle for cancellation
         let rollEndTimeoutId = null; // End-of-roll timer (cleared on restart)
         let lastRollResult = null;  // Stores last roll result for testing
+
+        let diceFaceCount = 6;
+        let die2dAngle = 0;
+        let coinAngle = 0;
+        window.diceFaceCount = diceFaceCount;
+
+        function clampFaceCount(value) {
+            const n = Number(value);
+            if (!Number.isFinite(n)) {
+                return 6;
+            }
+            return Math.max(2, Math.min(20, Math.round(n)));
+        }
+
+        function updateFaceCountValidity() {
+            if (!faceCountInput) {
+                return;
+            }
+
+            const raw = faceCountInput.value;
+            const n = Number(raw);
+            const ok =
+                Number.isFinite(n) &&
+                Number.isInteger(n) &&
+                n >= 2 &&
+                n <= 20;
+            faceCountInput.setAttribute('aria-invalid', String(!ok));
+        }
+
+        function regularPolygonClip(edges) {
+            const n = Math.round(Number(edges));
+            if (!Number.isFinite(n) || n < 3) {
+                return '';
+            }
+
+            const r = 48;
+            let a0 = -Math.PI / 2;
+            if (n % 2 === 0) {
+                a0 += Math.PI / n;
+            }
+
+            const pts = [];
+            for (let i = 0; i < n; i++) {
+                const a = a0 + (2 * Math.PI * i) / n;
+                const x = 50 + r * Math.cos(a);
+                const y = 50 + r * Math.sin(a);
+                pts.push(`${x.toFixed(1)}% ${y.toFixed(1)}%`);
+            }
+            return `polygon(${pts.join(',')})`;
+        }
+
+        function coinFaceLabel(face) {
+            return face === 1 ? 'Heads' : 'Tails';
+        }
+
+        function coinFaceChip(face) {
+            return face === 1 ? 'H' : 'T';
+        }
+
+        function alignAngleToMod(angle, targetMod) {
+            const a = Number(angle);
+            const t = Number(targetMod);
+            if (!Number.isFinite(a) || !Number.isFinite(t)) {
+                return angle;
+            }
+
+            const m = ((a % 360) + 360) % 360;
+            let d = t - m;
+            d = ((d + 540) % 360) - 180;
+            return a + d;
+        }
+
+        function makeCounts(maxFace) {
+            const counts = {};
+            for (let face = 1; face <= maxFace; face++) {
+                counts[face] = 0;
+            }
+            return counts;
+        }
+
+        function setDieMode() {
+            const isCube = diceFaceCount === 6;
+            const isCoin = diceFaceCount === 2;
+
+            if (dice) {
+                dice.style.display = isCube ? '' : 'none';
+            }
+            if (die2d) {
+                die2d.style.display = isCube || isCoin ? 'none' : 'flex';
+                die2d.setAttribute('aria-hidden', String(isCube || isCoin));
+
+                if (isCube || isCoin) {
+                    die2d.style.removeProperty('--die2d-clip');
+                    die2d.style.borderRadius = '';
+                } else {
+                    const clip = regularPolygonClip(diceFaceCount);
+                    if (clip) {
+                        die2d.style.setProperty('--die2d-clip', clip);
+                        die2d.style.borderRadius = '0';
+                    } else {
+                        die2d.style.removeProperty('--die2d-clip');
+                        die2d.style.borderRadius = '';
+                    }
+                }
+            }
+
+            if (coin) {
+                coin.style.display = isCube || !isCoin ? 'none' : 'flex';
+                coin.setAttribute('aria-hidden', String(isCube || !isCoin));
+                if (isCoin) {
+                    coin.style.setProperty('--coin-y', '0px');
+                    coin.style.setProperty('--coin-scale', '1');
+                    coin.style.setProperty('--coin-rot', `${coinAngle}deg`);
+                }
+            }
+
+            if (faceCountHint) {
+                faceCountHint.textContent = isCoin ? 'H/T' : '';
+            }
+
+            if (die2dLabel) {
+                die2dLabel.textContent = `D${diceFaceCount}`;
+            }
+            if (die2dValue) {
+                const v = Number.isInteger(lastRollResult) ?
+                    lastRollResult :
+                    diceFaceCount;
+                die2dValue.textContent = String(
+                    Math.max(1, Math.min(diceFaceCount, v))
+                );
+            }
+        }
+
+        function resetRollHistory() {
+            rollHistory.rolls = [];
+            rollHistory.counts = makeCounts(diceFaceCount);
+            rollHistory.totalRolls = 0;
+            updateHistoryUI();
+        }
+
+        function setDiceFaceCount(value) {
+            const next = clampFaceCount(value);
+            if (next === diceFaceCount) {
+                if (faceCountInput) {
+                    faceCountInput.value = String(diceFaceCount);
+                    updateFaceCountValidity();
+                }
+                return;
+            }
+
+            stopRollImmediate();
+            diceFaceCount = next;
+            window.diceFaceCount = diceFaceCount;
+
+            if (faceCountInput) {
+                faceCountInput.value = String(diceFaceCount);
+                updateFaceCountValidity();
+            }
+            if (result) {
+                result.textContent = '';
+                result.classList.remove('show');
+            }
+
+            setDieMode();
+            resetRollHistory();
+        }
+
+        if (faceCountInput) {
+            faceCountInput.value = String(diceFaceCount);
+            updateFaceCountValidity();
+            faceCountInput.addEventListener('input', () => {
+                updateFaceCountValidity();
+            });
+            faceCountInput.addEventListener('change', () => {
+                setDiceFaceCount(faceCountInput.value);
+                updateFaceCountValidity();
+            });
+        }
+        setDieMode();
 
         // ================================================================
         // Sound
@@ -1056,9 +1653,12 @@ How to Use
         let soundMasterGain = null;
         let soundImpactBuffer = null;
         let soundImpactBufferSr = 0;
+        let coinNoiseBuffer = null;
+        let coinNoiseBufferSr = 0;
+        let coinSoundNodes = [];
         let celebrationBuffer = null;
         let celebrationBufferSr = 0;
-        let celebrationLastPlayTime = 0;
+        let celebrationLastPlayTime = -Infinity;
         let soundModRafId = null;
         let soundStartTime = 0;
         let soundNextImpactTime = 0;
@@ -1121,6 +1721,24 @@ How to Use
                 }
             }
 
+            for (const n of coinSoundNodes) {
+                if (!n) {
+                    continue;
+                }
+                try {
+                    if (typeof n.stop === 'function') {
+                        n.stop();
+                    }
+                } catch {
+                    // Ignore
+                }
+                try {
+                    n.disconnect();
+                } catch {
+                    // Ignore
+                }
+            }
+
             const nodes = [soundBed, soundBedFilter, soundBedGain,
                 soundMasterGain];
             for (const n of nodes) {
@@ -1138,6 +1756,7 @@ How to Use
             soundBedFilter = null;
             soundBedGain = null;
             soundMasterGain = null;
+            coinSoundNodes = [];
             soundStartTime = 0;
             soundNextImpactTime = 0;
             soundDurationSec = 0;
@@ -1159,6 +1778,138 @@ How to Use
             soundImpactBuffer = buf;
             soundImpactBufferSr = sr;
             return buf;
+        }
+
+        function getCoinNoiseBuffer(ctx) {
+            if (coinNoiseBuffer && coinNoiseBufferSr === ctx.sampleRate) {
+                return coinNoiseBuffer;
+            }
+
+            const sr = ctx.sampleRate || 44100;
+            const len = Math.floor(sr * 0.12);
+            const buf = ctx.createBuffer(1, len, sr);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < data.length; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            coinNoiseBuffer = buf;
+            coinNoiseBufferSr = sr;
+            return buf;
+        }
+
+        function scheduleCoinTing(ctx, when, baseHz, amp, decay) {
+            if (!soundMasterGain) {
+                return;
+            }
+
+            let osc;
+            try {
+                osc = ctx.createOscillator();
+                osc.type = 'triangle';
+                osc.frequency.value = baseHz;
+            } catch {
+                return;
+            }
+
+            const g = ctx.createGain();
+            g.gain.value = 0;
+            osc.connect(g);
+            g.connect(soundMasterGain);
+
+            try {
+                g.gain.setValueAtTime(0.0001, when);
+                g.gain.linearRampToValueAtTime(amp, when + 0.002);
+                g.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+            } catch {
+                // Ignore
+            }
+
+            try {
+                osc.start(when);
+                osc.stop(when + decay + 0.02);
+            } catch {
+                // Ignore
+            }
+
+            coinSoundNodes.push(osc, g);
+        }
+
+        function scheduleCoinClink(ctx, when, amp) {
+            if (!soundMasterGain) {
+                return;
+            }
+
+            let noise;
+            try {
+                noise = ctx.createBufferSource();
+                noise.buffer = getCoinNoiseBuffer(ctx);
+                noise.loop = false;
+            } catch {
+                return;
+            }
+
+            const bp = ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.frequency.value = 4200 + Math.random() * 1200;
+            bp.Q.value = 10;
+
+            const g = ctx.createGain();
+            g.gain.value = 0;
+
+            noise.connect(bp);
+            bp.connect(g);
+            g.connect(soundMasterGain);
+
+            try {
+                g.gain.setValueAtTime(0.0001, when);
+                g.gain.linearRampToValueAtTime(amp, when + 0.002);
+                g.gain.exponentialRampToValueAtTime(0.0001, when + 0.16);
+            } catch {
+                // Ignore
+            }
+
+            try {
+                noise.start(when);
+                noise.stop(when + 0.20);
+            } catch {
+                // Ignore
+            }
+
+            const f1 = 2100 + Math.random() * 380;
+            const f2 = 3600 + Math.random() * 620;
+            scheduleCoinTing(ctx, when, f1, amp * 0.55, 0.28);
+            scheduleCoinTing(ctx, when + 0.012, f2, amp * 0.42, 0.34);
+
+            coinSoundNodes.push(noise, bp, g);
+        }
+
+        function startCoinTossSound(ctx, durationMs) {
+            try {
+                soundMasterGain = ctx.createGain();
+                soundMasterGain.gain.value = 0.22;
+                soundMasterGain.connect(ctx.destination);
+                isRollingSoundPlaying = true;
+            } catch {
+                stopRollingSound();
+                return;
+            }
+
+            const now = ctx.currentTime;
+            const dur = Math.max(0.8, (durationMs || 3200) / 1000);
+            const a0 = now + 0.03;
+
+            for (let i = 0; i < 6; i++) {
+                const t = a0 + i * (0.05 + Math.random() * 0.03);
+                const hz = 3600 + Math.random() * 2200;
+                const amp = 0.06 + Math.random() * 0.04;
+                const dec = 0.06 + Math.random() * 0.05;
+                scheduleCoinTing(ctx, t, hz, amp, dec);
+            }
+
+            const land = now + dur * 0.82;
+            scheduleCoinClink(ctx, land, 0.20);
+            scheduleCoinClink(ctx, land + 0.07, 0.12);
         }
 
         function getCelebrationBuffer(ctx) {
@@ -1374,6 +2125,11 @@ How to Use
                 // Ignore
             }
 
+            if (diceFaceCount === 2) {
+                startCoinTossSound(ctx, durationMs);
+                return;
+            }
+
             try {
                 soundMasterGain = ctx.createGain();
                 soundMasterGain.gain.value = 0.18;
@@ -1499,7 +2255,7 @@ How to Use
 
         // ================================================================
         // Confetti Burst
-        // Shown when the dice finishes on the max value (6)
+        // Shown when the dice finishes on the max value
         // ================================================================
 
         function getConfettiPalette() {
@@ -1638,11 +2394,35 @@ How to Use
             confettiRafId = requestAnimationFrame(stepConfetti);
         }
 
+        function stopRollImmediate() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            if (rollEndTimeoutId) {
+                clearTimeout(rollEndTimeoutId);
+                rollEndTimeoutId = null;
+            }
+
+            stopRollingSound();
+
+            isRolling = false;
+            if (dice) {
+                dice.classList.remove('rolling');
+            }
+            if (shadow) {
+                shadow.classList.remove('rolling');
+            }
+            if (die2d) {
+                die2d.classList.remove('rolling');
+            }
+        }
+
         // ================================================================
         // Main Roll Function
         // Initiates the dice roll animation
         // ================================================================
-        function rollDice(forceResult = null) {
+        function rollDice(forceResult) {
             // Allow clicking during roll - cancel current animation
             if (isRolling && animationId) {
                 cancelAnimationFrame(animationId);
@@ -1662,15 +2442,200 @@ How to Use
             isRolling = true;
 
             // Add rolling state classes for CSS effects
-            dice.classList.add('rolling');
-            shadow.classList.add('rolling');
-            result.classList.remove('show');
+            if (shadow) {
+                shadow.classList.add('rolling');
+            }
+            if (result) {
+                result.classList.remove('show');
+            }
 
-
-            // Determine final face (1-6), can be forced for testing
-            const finalFace = forceResult ||
-                (Math.floor(Math.random() * 6) + 1);
+            // Determine final face (1..diceFaceCount), can be forced
+            const forced = Number(forceResult);
+            const hasForced = Number.isInteger(forced);
+            const finalFace = hasForced ?
+                Math.max(1, Math.min(diceFaceCount, forced)) :
+                (Math.floor(Math.random() * diceFaceCount) + 1);
             lastRollResult = finalFace;
+
+            const isCube = diceFaceCount === 6;
+            if (dice) {
+                dice.classList.toggle('rolling', isCube);
+            }
+            if (die2d) {
+                die2d.classList.toggle('rolling', !isCube);
+            }
+            if (coin) {
+                coin.classList.toggle(
+                    'rolling',
+                    !isCube && diceFaceCount === 2
+                );
+            }
+
+            if (!isCube) {
+                setDieMode();
+            }
+
+            // Natural roll duration - not too long, not too short
+            // 3-4 seconds feels like a real dice roll
+            const duration = 3000 + Math.random() * 1000;
+
+            // Store duration for testing
+            window.lastRollDuration = duration;
+            const startTime = performance.now();
+
+            // Start sound only if user enabled it.
+            startRollingSound(duration);
+
+            if (!isCube && diceFaceCount === 2) {
+                const startA = coinAngle;
+                const flips = (Math.floor(Math.random() * 3) + 5) * 360;
+                const dir = Math.random() > 0.5 ? 1 : -1;
+                const target = finalFace === 2 ? 180 : 0;
+                const baseA = startA + flips * dir;
+                const endA = alignAngleToMod(baseA, target);
+                const heightPx = 76;
+                const scaleBoost = 0.06;
+
+                window.lastRollRotationPlan = {
+                    startZ: startA,
+                    endZ: endA,
+                    deltaZ: endA - startA,
+                    face: finalFace,
+                    mode: 'coin'
+                };
+
+                function animateCoin(currentTime) {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const eased = easeNaturalRoll(progress);
+                    coinAngle = startA + (endA - startA) * eased;
+
+                    const lift = 4 * heightPx * progress * (1 - progress);
+                    const y = -lift;
+                    const s = 1 + (lift / heightPx) * scaleBoost;
+
+                    if (coin) {
+                        coin.style.setProperty(
+                            '--coin-rot',
+                            `${coinAngle}deg`
+                        );
+                        coin.style.setProperty('--coin-y', `${y}px`);
+                        coin.style.setProperty('--coin-scale', String(s));
+                    }
+
+                    if (
+                        progress >= 0.7 &&
+                        result &&
+                        !result.classList.contains('show')
+                    ) {
+                        result.textContent = coinFaceLabel(finalFace);
+                        result.classList.add('show');
+                        recordRoll(finalFace);
+                        if (finalFace === diceFaceCount) {
+                            triggerConfettiBurst();
+                        }
+                    }
+
+                    if (progress < 1) {
+                        animationId = requestAnimationFrame(animateCoin);
+                    } else {
+                        if (shadow) {
+                            shadow.classList.remove('rolling');
+                        }
+                        if (coin) {
+                            coin.classList.remove('rolling');
+                        }
+
+                        stopRollingSound();
+                        hasRolledOnce = true;
+
+                        rollEndTimeoutId = setTimeout(() => {
+                            isRolling = false;
+                            rollEndTimeoutId = null;
+                        }, 100);
+                    }
+                }
+
+                if (coin) {
+                    coin.classList.add('rolling');
+                }
+                animationId = requestAnimationFrame(animateCoin);
+                return finalFace;
+            }
+
+            if (!isCube) {
+                const startA = die2dAngle;
+                const spins = (Math.floor(Math.random() * 3) + 4) * 360;
+                const dir = Math.random() > 0.5 ? 1 : -1;
+                const endA = startA + spins * dir;
+
+                window.lastRollRotationPlan = {
+                    startZ: startA,
+                    endZ: endA,
+                    deltaZ: endA - startA,
+                    face: finalFace,
+                    mode: 'flat'
+                };
+
+                function animateFlat(currentTime) {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const eased = easeNaturalRoll(progress);
+
+                    die2dAngle = startA + (endA - startA) * eased;
+                    if (die2d) {
+                        die2d.style.setProperty(
+                            '--die2d-rot',
+                            `${die2dAngle}deg`
+                        );
+                    }
+
+                    if (progress < 0.7 && die2dValue) {
+                        die2dValue.textContent = String(
+                            Math.floor(Math.random() * diceFaceCount) + 1
+                        );
+                    }
+
+                    if (
+                        progress >= 0.7 &&
+                        result &&
+                        !result.classList.contains('show')
+                    ) {
+                        result.textContent = finalFace;
+                        result.classList.add('show');
+                        if (die2dValue) {
+                            die2dValue.textContent = String(finalFace);
+                        }
+                        recordRoll(finalFace);
+                        if (finalFace === diceFaceCount) {
+                            triggerConfettiBurst();
+                        }
+                    }
+
+                    if (progress < 1) {
+                        animationId = requestAnimationFrame(animateFlat);
+                    } else {
+                        if (shadow) {
+                            shadow.classList.remove('rolling');
+                        }
+                        if (die2d) {
+                            die2d.classList.remove('rolling');
+                        }
+
+                        stopRollingSound();
+                        hasRolledOnce = true;
+
+                        rollEndTimeoutId = setTimeout(() => {
+                            isRolling = false;
+                            rollEndTimeoutId = null;
+                        }, 100);
+                    }
+                }
+
+                animationId = requestAnimationFrame(animateFlat);
+                return finalFace;
+            }
+
             const targetRotation = faceRotations[finalFace];
 
             // Calculate total rotation (multiple full spins + final)
@@ -1722,17 +2687,6 @@ How to Use
                 face: finalFace
             };
 
-            // Natural roll duration - not too long, not too short
-            // 3-4 seconds feels like a real dice roll
-            const duration = 3000 + Math.random() * 1000;
-            
-            // Store duration for testing
-            window.lastRollDuration = duration;
-            const startTime = performance.now();
-
-            // Start sound only if user enabled it.
-            startRollingSound(duration);
-
             /**
              * Animation loop - called each frame via RAF
              * Calculates current rotation based on elapsed time
@@ -1763,7 +2717,7 @@ How to Use
                     result.classList.add('show');
                     recordRoll(finalFace);
 
-                    if (finalFace === 6) {
+                    if (finalFace === diceFaceCount) {
                         triggerConfettiBurst();
                     }
                 }
@@ -1833,10 +2787,8 @@ How to Use
         // ================================================================
         const rollHistory = {
             rolls: [],           // Array of roll results (most recent last)
-            maxHistory: 10,      // Keep last N rolls for display
-            counts: {            // Count per face value
-                1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0
-            },
+            maxHistory: 20,      // Keep last N rolls for display
+            counts: makeCounts(diceFaceCount),
             totalRolls: 0        // Total rolls this session
         };
 
@@ -1845,11 +2797,11 @@ How to Use
 
         /**
          * Record a roll result to history
-         * @param {number} result - The dice face value (1-6)
+         * @param {number} result - The dice face value (1..diceFaceCount)
          */
         function recordRoll(result) {
             const face = Number(result);
-            if (!Number.isInteger(face) || face < 1 || face > 6) {
+            if (!Number.isInteger(face) || face < 1 || face > diceFaceCount) {
                 return;
             }
             
@@ -1857,6 +2809,9 @@ How to Use
             // Keep only last N rolls
             if (rollHistory.rolls.length > rollHistory.maxHistory) {
                 rollHistory.rolls.shift();
+            }
+            if (rollHistory.counts[face] === undefined) {
+                rollHistory.counts[face] = 0;
             }
             rollHistory.counts[face]++;
             rollHistory.totalRolls++;
@@ -1871,7 +2826,7 @@ How to Use
          */
         function getRollPercentages() {
             const percentages = {};
-            for (let face = 1; face <= 6; face++) {
+            for (let face = 1; face <= diceFaceCount; face++) {
                 if (rollHistory.totalRolls === 0) {
                     percentages[face] = 0;
                 } else {
@@ -1892,15 +2847,36 @@ How to Use
             // Only run idle animation if no roll has occurred yet
             // Once user rolls, dice stays still after stopping
             if (!isRolling && !hasRolledOnce) {
+                const el = diceFaceCount === 6 ? dice :
+                    (diceFaceCount === 2 ? coin : die2d);
+                if (!el) {
+                    requestAnimationFrame(idleAnimation);
+                    return;
+                }
+
                 // Slow oscillation for gentle float effect
                 idleAngle += 0.015;
                 const wobbleX = Math.sin(idleAngle) * 2;
                 const wobbleY = Math.cos(idleAngle * 0.7) * 2;
                 const wobbleZ = Math.sin(idleAngle * 0.9) * 1.2;
-                dice.style.transform =
-                    `rotateZ(${rotationZ + wobbleZ}deg) ` +
-                    `rotateX(${rotationX + wobbleX}deg) ` +
-                    `rotateY(${rotationY + wobbleY}deg)`;
+                if (diceFaceCount === 6) {
+                    dice.style.transform =
+                        `rotateZ(${rotationZ + wobbleZ}deg) ` +
+                        `rotateX(${rotationX + wobbleX}deg) ` +
+                        `rotateY(${rotationY + wobbleY}deg)`;
+                } else if (diceFaceCount === 2) {
+                    coinAngle += wobbleZ * 0.05;
+                    el.style.setProperty(
+                        '--coin-rot',
+                        `${coinAngle}deg`
+                    );
+                } else {
+                    die2dAngle += wobbleZ * 0.05;
+                    el.style.setProperty(
+                        '--die2d-rot',
+                        `${die2dAngle}deg`
+                    );
+                }
             }
             requestAnimationFrame(idleAnimation);
         }
@@ -1917,16 +2893,34 @@ How to Use
         historyTab.id = 'historyTab';
         historyTab.innerHTML = `
             <div class="history-tab-header" id="historyHeader">
-                <span class="history-title">History</span>
+                <span class="history-title">Details</span>
                 <button
                     class="history-toggle-btn"
                     id="historyToggleBtn"
-                    aria-label="Toggle history"
+                    aria-label="Toggle details"
                 >▸</button>
             </div>
             <div class="history-content" id="historyContent">
                 <div class="history-section">
-                    <div class="history-section-title">Last 10 Rolls</div>
+                    <div class="history-row">
+                        <div class="history-row-title">Die</div>
+                        <div id="detailsDieControls"></div>
+                    </div>
+                </div>
+                <div class="history-section">
+                    <div class="history-row">
+                        <div class="history-row-title">Sound</div>
+                        <label class="history-sound-toggle">
+                            <input
+                                type="checkbox"
+                                id="historySoundEnabled"
+                            >
+                            <span>Rolling sound</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="history-section">
+                    <div class="history-section-title">Last 20 Rolls</div>
                     <div class="history-rolls" id="historyRolls">
                         <div class="history-empty">No rolls yet</div>
                     </div>
@@ -1945,19 +2939,17 @@ How to Use
                     <div class="history-section-title">Distribution</div>
                     <div id="historyDistribution"></div>
                 </div>
-                <div class="history-section">
-                    <div class="history-section-title">Sound</div>
-                    <label class="history-sound-toggle">
-                        <input
-                            type="checkbox"
-                            id="historySoundEnabled"
-                        >
-                        <span>Rolling sound</span>
-                    </label>
-                </div>
             </div>
         `;
         document.body.appendChild(historyTab);
+
+        // Move face-count control into Details tab.
+        const faceCountControl = document.getElementById('faceCountControl');
+        const detailsDieControls =
+            document.getElementById('detailsDieControls');
+        if (faceCountControl && detailsDieControls) {
+            detailsDieControls.appendChild(faceCountControl);
+        }
 
         // History tab toggle functionality
         const historyHeader = document.getElementById('historyHeader');
@@ -1993,7 +2985,7 @@ How to Use
          * Update the History tab UI with current data
          */
         function updateHistoryUI() {
-            // Update last 10 rolls display
+            // Update last rolls display
             const rollsContainer = document.getElementById('historyRolls');
             const totalEl = document.getElementById('historyTotalRolls');
             const distContainer =
@@ -2010,25 +3002,48 @@ How to Use
                     + '</div>'
                 );
             } else {
+                const isCoin = diceFaceCount === 2;
                 rollsContainer.innerHTML = rollHistory.rolls
-                    .map(r => `<div class="history-roll-item">${r}</div>`)
+                    .map(r => {
+                        const v = isCoin ? coinFaceChip(r) : String(r);
+                        return `<div class="history-roll-item">${v}</div>`;
+                    })
                     .join('');
             }
 
             // Update total rolls
             totalEl.textContent = rollHistory.totalRolls;
 
+            function getDistClass(pct) {
+                if (rollHistory.totalRolls === 0) {
+                    return '';
+                }
+
+                const expected = 100 / Math.max(1, diceFaceCount);
+                const delta = Math.abs(Number(pct) - expected);
+                const ratio = expected > 0 ? delta / expected : 0;
+                if (ratio <= 0.25) {
+                    return 'dist-good';
+                }
+                if (ratio <= 0.60) {
+                    return 'dist-ok';
+                }
+                return 'dist-bad';
+            }
+
             // Update distribution bars
             const percentages = getRollPercentages();
             let distHtml = '';
-            for (let face = 1; face <= 6; face++) {
+            for (let face = 1; face <= diceFaceCount; face++) {
                 const pct = percentages[face];
+                const label = diceFaceCount === 2 ? coinFaceChip(face) : face;
+                const cls = getDistClass(pct);
                 distHtml += `
                     <div class="history-bar-container">
-                        <span class="history-bar-label">${face}</span>
+                        <span class="history-bar-label">${label}</span>
                         <div class="history-bar">
                             <div
-                                class="history-bar-fill"
+                                class="history-bar-fill ${cls}"
                                 style="width: ${pct}%"
                             ></div>
                         </div>
@@ -2122,6 +3137,12 @@ How to Use
                 if (shadow) {
                     shadow.classList.remove('rolling');
                 }
+                if (die2d) {
+                    die2d.classList.remove('rolling');
+                }
+                if (coin) {
+                    coin.classList.remove('rolling');
+                }
 
                 stopRollingSound();
             }
@@ -2179,7 +3200,8 @@ How to Use
                 const state = {
                     constructed: 0,
                     starts: 0,
-                    stops: 0
+                    stops: 0,
+                    oscillators: 0
                 };
 
                 function makeMockParam(value) {
@@ -2236,6 +3258,20 @@ How to Use
                     }
                 }
 
+                class MockOscillator extends MockNode {
+                    constructor() {
+                        super();
+                        this.type = 'sine';
+                        this.frequency = makeMockParam(440);
+                    }
+                    start() {
+                        state.starts++;
+                    }
+                    stop() {
+                        state.stops++;
+                    }
+                }
+
                 class MockAudioContext {
                     constructor() {
                         state.constructed++;
@@ -2260,6 +3296,10 @@ How to Use
                     }
                     createBiquadFilter() {
                         return new MockFilter();
+                    }
+                    createOscillator() {
+                        state.oscillators++;
+                        return new MockOscillator();
                     }
                     resume() {
                         this.state = 'running';
@@ -2562,7 +3602,7 @@ How to Use
             - Categories come from name prefixes:
                 DOM:, Easing:, CSS:, rollDice:, Centering:, Result:,
                 Interaction:, History:, Sound:, Physics:, Stability:,
-                Random Color:, Confetti:.
+                Random Color:, Confetti:, Celebration:, Config:.
             - Some tests read window-exposed variables (e.g.,
                 lastRollRotationPlan) to validate runtime state.
 
@@ -2688,6 +3728,19 @@ How to Use
             #118: Confetti: non-max roll shows no burst
             #119: Celebration: does not play when disabled
             #120: Celebration: plays on max when enabled
+            #121: Config: face count input exists
+            #122: Config: d20 max triggers confetti
+            #123: Details: face count control mounted in Details
+            #124: Details: expanded content is scrollable
+            #125: Mode: d2 shows coin and hint
+            #126: Mode: d7 sets polygon clip-path
+            #127: Roll: d2 shows Heads/Tails and records H/T
+            #128: Roll: d2 toss arc lifts and lands
+            #129: Roll: d2 end rotation aligns to face
+            #130: Sound: d2 coin sound starts/stops when enabled
+            #131: Sound: d2 coin sound silent when disabled
+            #132: Config: face count out of range is invalid
+            #133: History: distribution deviation colors
             */
 
             // ------------------------------------------------------------
@@ -3962,7 +5015,7 @@ How to Use
             // Test 92: rolls array limited to maxHistory
             test('History: rolls array respects maxHistory', () => {
                 // Fill beyond max
-                for (let i = 0; i < 15; i++) {
+                for (let i = 0; i < 30; i++) {
                     window.recordRoll((i % 6) + 1);
                 }
                 assert(
@@ -4304,6 +5357,369 @@ How to Use
                     cb.checked = false;
                     cb.dispatchEvent(new Event('change'));
                 });
+            });
+
+            test('Config: face count input exists', () => {
+                const input = document.getElementById('faceCount');
+                assert(input !== null, 'face count input should exist');
+                eq(input.getAttribute('min'), '2');
+                eq(input.getAttribute('max'), '20');
+                eq(String(input.value), '6');
+            });
+
+            test('Config: d20 max triggers confetti', () => {
+                const layer = document.getElementById('confettiLayer');
+                assert(layer !== null, 'confetti layer should exist');
+                layer.innerHTML = '';
+
+                const prev = diceFaceCount;
+                setDiceFaceCount(20);
+                eq(window.diceFaceCount, 20);
+
+                const dist = document.getElementById('historyDistribution');
+                assert(dist !== null, 'distribution should exist');
+                assert(
+                    dist.querySelectorAll('.history-bar-container').length
+                        === 20,
+                    'should show 20 distribution bars'
+                );
+
+                withRafQueue(({ flushNamed }) => {
+                    rollDice(20);
+                    const dur = window.lastRollDuration;
+                    const base = performance.now();
+                    const t1 = base + dur * 1.01;
+                    assert(flushNamed('animateFlat', t1), 'animate should run');
+                    assert(layer.children.length > 0, 'burst should spawn');
+                    stopRollingForTests();
+                });
+
+                setDiceFaceCount(prev);
+                layer.innerHTML = '';
+            });
+
+            test('Details: face count control mounted in Details', () => {
+                const control = document.getElementById('faceCountControl');
+                const mount = document.getElementById('detailsDieControls');
+                assert(control !== null, 'face count control should exist');
+                assert(mount !== null, 'details mount should exist');
+                assert(
+                    mount.contains(control),
+                    'control should be inside Details mount'
+                );
+            });
+
+            test('Details: expanded content is scrollable', () => {
+                const tab = document.getElementById('historyTab');
+                const header = document.getElementById('historyHeader');
+                const content = document.getElementById('historyContent');
+                assert(tab !== null, 'details tab should exist');
+                assert(header !== null, 'details header should exist');
+                assert(content !== null, 'details content should exist');
+
+                tab.classList.remove('expanded');
+                header.click();
+                assert(
+                    tab.classList.contains('expanded'),
+                    'details should be expanded'
+                );
+
+                const cs = getComputedStyle(content);
+                eq(cs.overflowY, 'auto');
+                assert(
+                    cs.paddingRight !== '0px',
+                    'padding-right should reserve scrollbar space'
+                );
+
+                tab.classList.remove('expanded');
+            });
+
+            test('Mode: d2 shows coin and hint', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(2);
+
+                const cube = document.getElementById('dice');
+                const dieFlat = document.getElementById('die2d');
+                const coinEl = document.getElementById('coin');
+                const hint = document.getElementById('faceCountHint');
+
+                assert(cube !== null, 'cube should exist');
+                assert(dieFlat !== null, 'die2d should exist');
+                assert(coinEl !== null, 'coin should exist');
+                assert(hint !== null, 'hint should exist');
+
+                eq(coinEl.style.display, 'flex');
+                eq(coinEl.getAttribute('aria-hidden'), 'false');
+                eq(dieFlat.style.display, 'none');
+                eq(dieFlat.getAttribute('aria-hidden'), 'true');
+                eq(cube.style.display, 'none');
+                assert(
+                    hint.textContent.includes('H'),
+                    'hint should indicate Heads/Tails'
+                );
+
+                setDiceFaceCount(prev);
+            });
+
+            test('Mode: d7 sets polygon clip-path', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(7);
+
+                const dieFlat = document.getElementById('die2d');
+                assert(dieFlat !== null, 'die2d should exist');
+                eq(dieFlat.style.display, 'flex');
+
+                const clip = dieFlat.style.getPropertyValue('--die2d-clip');
+                assert(clip.includes('polygon('), 'clip-path should be polygon');
+
+                const inner = clip
+                    .replace('polygon(', '')
+                    .replace(')', '')
+                    .trim();
+                const points = inner.length ? inner.split(',') : [];
+                eq(points.length, 7);
+
+                setDiceFaceCount(prev);
+            });
+
+            test('Roll: d2 shows Heads/Tails and records H/T', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(2);
+                resetRollHistory();
+
+                const rolls = document.getElementById('historyRolls');
+                const dist = document.getElementById('historyDistribution');
+                assert(rolls !== null, 'rolls should exist');
+                assert(dist !== null, 'distribution should exist');
+
+                withRafQueue(({ flushNamed }) => {
+                    rollDice(1);
+                    const dur = window.lastRollDuration;
+                    const base = performance.now();
+                    const tReveal = base + dur * 0.71;
+                    assert(flushNamed('animateCoin', tReveal), 'coin should run');
+
+                    assert(result !== null, 'result should exist');
+                    eq(result.textContent, 'Heads');
+                    assert(result.classList.contains('show'), 'result should show');
+
+                    assert(
+                        rolls.textContent.includes('H'),
+                        'last rolls should contain H'
+                    );
+                    assert(
+                        dist.textContent.includes('H'),
+                        'distribution should contain H'
+                    );
+                    assert(
+                        dist.textContent.includes('T'),
+                        'distribution should contain T'
+                    );
+
+                    stopRollingForTests();
+                });
+
+                setDiceFaceCount(prev);
+            });
+
+            test('Roll: d2 toss arc lifts and lands', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(2);
+
+                const coinEl = document.getElementById('coin');
+                assert(coinEl !== null, 'coin should exist');
+
+                withRafQueue(({ flushNamed }) => {
+                    rollDice(2);
+                    const dur = window.lastRollDuration;
+                    const base = performance.now();
+
+                    const tMid = base + dur * 0.50;
+                    assert(flushNamed('animateCoin', tMid), 'coin should run');
+                    const yMid = parseFloat(
+                        coinEl.style.getPropertyValue('--coin-y')
+                    );
+                    assert(yMid < 0, 'coin should lift upward (negative y)');
+
+                    const tEnd = base + dur * 1.01;
+                    assert(flushNamed('animateCoin', tEnd), 'coin should finish');
+                    const yEnd = parseFloat(
+                        coinEl.style.getPropertyValue('--coin-y')
+                    );
+                    assert(Math.abs(yEnd) < 0.1, 'coin should land near y=0');
+
+                    stopRollingForTests();
+                });
+
+                setDiceFaceCount(prev);
+            });
+
+            test('Roll: d2 end rotation aligns to face', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(2);
+
+                rollDice(1);
+                assert(
+                    window.lastRollRotationPlan,
+                    'rotation plan should exist'
+                );
+                eq(window.lastRollRotationPlan.mode, 'coin');
+                const end1 = mod360(window.lastRollRotationPlan.endZ);
+                assert(end1 < 0.2 || Math.abs(end1 - 360) < 0.2, 'ends at 0');
+                stopRollingForTests();
+
+                rollDice(2);
+                assert(
+                    window.lastRollRotationPlan,
+                    'rotation plan should exist'
+                );
+                eq(window.lastRollRotationPlan.mode, 'coin');
+                const end2 = mod360(window.lastRollRotationPlan.endZ);
+                assert(Math.abs(end2 - 180) < 0.2, 'ends at 180');
+                stopRollingForTests();
+
+                setDiceFaceCount(prev);
+            });
+
+            test('Sound: d2 coin sound starts/stops when enabled', () => {
+                withMockAudioContext((state) => {
+                    const cb = document.getElementById('historySoundEnabled');
+                    assert(cb !== null, 'sound checkbox should exist');
+
+                    const prev = diceFaceCount;
+                    soundEnabled = false;
+                    soundCtx = null;
+                    stopRollingForTests();
+                    setDiceFaceCount(2);
+
+                    cb.checked = true;
+                    cb.dispatchEvent(new Event('change'));
+
+                    withRafQueue(({ flushNamed }) => {
+                        rollDice(1);
+                        const dur = window.lastRollDuration;
+                        const base = performance.now();
+                        const tEnd = base + dur * 1.01;
+                        assert(
+                            flushNamed('animateCoin', tEnd),
+                            'coin should finish'
+                        );
+                        eq(state.constructed, 1);
+                        assert(state.starts >= 1, 'should start sound nodes');
+                        assert(state.stops >= 1, 'should stop sound nodes');
+                        assert(
+                            state.oscillators >= 1,
+                            'coin sound should create oscillators'
+                        );
+                        stopRollingForTests();
+                    });
+
+                    cb.checked = false;
+                    cb.dispatchEvent(new Event('change'));
+                    setDiceFaceCount(prev);
+                });
+            });
+
+            test('Sound: d2 coin sound silent when disabled', () => {
+                withMockAudioContext((state) => {
+                    const cb = document.getElementById('historySoundEnabled');
+                    assert(cb !== null, 'sound checkbox should exist');
+
+                    soundEnabled = false;
+                    soundCtx = null;
+                    stopRollingForTests();
+
+                    cb.checked = false;
+                    cb.dispatchEvent(new Event('change'));
+
+                    const prev = diceFaceCount;
+                    setDiceFaceCount(2);
+
+                    withRafQueue(({ flushNamed }) => {
+                        rollDice(2);
+                        const dur = window.lastRollDuration;
+                        const base = performance.now();
+                        const tMid = base + dur * 0.20;
+                        assert(
+                            flushNamed('animateCoin', tMid),
+                            'coin should run'
+                        );
+                        eq(state.constructed, 0);
+                        eq(state.starts, 0);
+                        eq(state.stops, 0);
+                        eq(state.oscillators, 0);
+                        stopRollingForTests();
+                    });
+
+                    setDiceFaceCount(prev);
+                });
+            });
+
+            test('Config: face count out of range is invalid', () => {
+                const input = document.getElementById('faceCount');
+                assert(input !== null, 'face count input should exist');
+
+                input.value = '1';
+                input.dispatchEvent(new Event('input'));
+                eq(input.getAttribute('aria-invalid'), 'true');
+
+                input.value = '21';
+                input.dispatchEvent(new Event('input'));
+                eq(input.getAttribute('aria-invalid'), 'true');
+
+                input.value = '2';
+                input.dispatchEvent(new Event('input'));
+                eq(input.getAttribute('aria-invalid'), 'false');
+
+                input.value = '20';
+                input.dispatchEvent(new Event('input'));
+                eq(input.getAttribute('aria-invalid'), 'false');
+            });
+
+            test('History: distribution deviation colors', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(6);
+
+                rollHistory.counts = makeCounts(6);
+                rollHistory.totalRolls = 60;
+                rollHistory.counts[1] = 10;
+                rollHistory.counts[2] = 15;
+                rollHistory.counts[3] = 11;
+                rollHistory.counts[4] = 12;
+                rollHistory.counts[5] = 12;
+                rollHistory.counts[6] = 0;
+                updateHistoryUI();
+
+                const dist = document.getElementById('historyDistribution');
+                assert(dist !== null, 'distribution should exist');
+                const rows = Array.from(
+                    dist.querySelectorAll('.history-bar-container')
+                );
+
+                function fillFor(labelText) {
+                    for (const row of rows) {
+                        const lab = row.querySelector('.history-bar-label');
+                        if (!lab) {
+                            continue;
+                        }
+                        if (String(lab.textContent).trim() === labelText) {
+                            return row.querySelector('.history-bar-fill');
+                        }
+                    }
+                    return null;
+                }
+
+                const f1 = fillFor('1');
+                const f2 = fillFor('2');
+                const f6 = fillFor('6');
+                assert(f1 !== null, 'face 1 fill should exist');
+                assert(f2 !== null, 'face 2 fill should exist');
+                assert(f6 !== null, 'face 6 fill should exist');
+                assert(f1.classList.contains('dist-good'), '1 should be good');
+                assert(f2.classList.contains('dist-ok'), '2 should be ok');
+                assert(f6.classList.contains('dist-bad'), '6 should be bad');
+
+                setDiceFaceCount(prev);
             });
         }
     </script>
