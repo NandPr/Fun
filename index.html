@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!--
+	Game Launcher (index.html)
+
+	A simple local launcher page for the small HTML games.
+	Use this as a starting point to open each game/experiment.
+	All games were built 100% using AI. No human coding. Enjoy!
+-->
 <html lang="en">
 <head>
 	<meta charset="UTF-8" />
@@ -12,19 +19,69 @@
 			margin: 0;
 			min-height: 100vh;
 			display: flex;
-			align-items: center;
-			justify-content: center;
+			flex-direction: column;
+			align-items: stretch;
 			font-family: system-ui, Arial, sans-serif;
 			background: #1a202c;
 			background-image: var(--bg);
 			color: #e2e8f0;
+			overflow: hidden;
+		}
+		#bg {
+			/*
+				Full-viewport background canvas.
+
+				- fixed/inset covers the whole browser area.
+				- pointer-events none ensures it never blocks clicks.
+				- opacity keeps it subtle behind the UI.
+			*/
+			position: fixed;
+			inset: 0;
+			width: 100vw;
+			height: 100vh;
+			z-index: 0;
+			pointer-events: none;
+			opacity: .62;
+			mix-blend-mode: normal;
+		}
+		.main {
+			position: relative;
+			z-index: 1;
+			flex: 1;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 100%;
 		}
 		.launchers {
+			position: relative;
 			display: flex;
 			flex-direction: column;
 			gap: 14px;
 			align-items: stretch;
 			width: min(520px, calc(100vw - 48px));
+		}
+		.head {
+			text-align: center;
+			margin-bottom: 10px;
+		}
+		.head h1 {
+			margin: 0;
+			font-size: 1.55rem;
+			letter-spacing: .6px;
+		}
+		.head p {
+			margin: 6px 0 0;
+			opacity: .9;
+			font-size: .95rem;
+		}
+		.foot {
+			text-align: center;
+			position: relative;
+			z-index: 1;
+			opacity: .65;
+			font-size: .85rem;
+			padding: 14px 0 16px;
 		}
 		a.launch {
 			display: inline-block;
@@ -38,16 +95,22 @@
 			text-align: center;
 			color: #fff;
 			border-radius: 16px;
-			background: linear-gradient(145deg,#3fc8c0,#1d5d59 60%);
-			box-shadow: 0 6px 18px -6px rgba(0,0,0,.65),
-									0 0 0 1px rgba(255,255,255,.10) inset;
+			background: linear-gradient(
+				145deg,
+				#3fc8c0,
+				#1d5d59 60%
+			);
+			box-shadow:
+				0 6px 18px -6px rgba(0,0,0,.65),
+				0 0 0 1px rgba(255,255,255,.10) inset;
 			transition: .28s cubic-bezier(.4,0,.2,1);
 		}
 		a.launch:hover {
 			transform: translateY(-3px);
-			box-shadow: 0 10px 28px -8px rgba(0,0,0,.7),
-									0 0 0 2px rgba(63,200,192,.55),
-									0 0 14px -3px rgba(63,200,192,.85);
+			box-shadow:
+				0 10px 28px -8px rgba(0,0,0,.7),
+				0 0 0 2px rgba(63,200,192,.55),
+				0 0 14px -3px rgba(63,200,192,.85);
 		}
 		a.launch:active {
 			transform: translateY(0);
@@ -55,10 +118,324 @@
 	</style>
 </head>
 <body>
-	<div class="launchers">
-		<a class="launch" href="BrainVita.html">Play Brainvita (Peg Solitaire)</a>
-		<a class="launch" href="Pendulum.html">Control a N-Bob Pendulum</a>
-		<a class="launch" href="Dice.html">Roll a N-Faced Dice</a>
+	<canvas id="bg" aria-hidden="true"></canvas>
+	<div class="main">
+		<div class="launchers">
+			<div class="head">
+				<h1>Prabhu's AI Experiments</h1>
+				<p>Coded 100% by LLMs</p>
+			</div>
+			<a class="launch" href="BrainVita.html">
+				Play Brainvita (Peg Solitaire)
+			</a>
+			<a class="launch" href="Pendulum.html">
+				Control a N-Bob Pendulum
+			</a>
+			<a class="launch" href="Dice.html">Roll a N-Faced Dice</a>
+			<a class="launch" href="TicTacToe.html?3D">Play Tic-Tac-Toe 3D</a>
+		</div>
 	</div>
+	<div class="foot">(c) Prabhu 2026</div>
+	<script>
+		(() => {
+			//
+			// Animated background (canvas)
+			// ---------------------------
+			//
+			// Goal: a visible-but-subtle motion layer behind the buttons.
+			//
+			// We render two layers each frame:
+			// 1) A drifting "fluid" texture from procedural noise (fbm).
+			// 2) A set of outline shapes drifting across the screen.
+			//
+			// The <canvas id="bg"> is full-screen and sits behind the UI.
+			// It is marked aria-hidden and has pointer-events disabled.
+			//
+			const c = document.getElementById('bg');
+			if (!c) return;
+			const g = c.getContext('2d', { alpha: true });
+			if (!g) return;
+
+			//
+			// Performance note:
+			//
+			// The "fluid" layer is computed into a *small* offscreen canvas
+			// (bufC). We then scale that up to the screen-sized canvas.
+			//
+			// Why: per-pixel noise is expensive at full resolution.
+			// Scaling a small buffer is cheap and still looks organic.
+			//
+			const bufC = document.createElement('canvas');
+			const bufG = bufC.getContext('2d', { alpha: true });
+			if (!bufG) return;
+
+			//
+			// Canvas size in *device pixels* (accounts for DPR).
+			//
+			// c.width/c.height are in device pixels.
+			// c.style width/height (CSS) are in CSS pixels.
+			// We set the backing store to DPR-scaled so shapes stay crisp.
+			//
+			let w = 0;
+			let h = 0;
+			let scale = 1;
+			let img = null;
+			// Shape objects drifting across the screen.
+			let shapes = [];
+			let shapeN = 0;
+
+			function clamp(n, a, b){
+				return Math.max(a, Math.min(b, n));
+			}
+			//
+			// Pseudo-random hash for integer (x, y). Returns 0..1.
+			//
+			// Key property: deterministic.
+			// Same (x,y) -> same value, every frame.
+			// That gives us stable noise without storing random tables.
+			//
+			function hash2(x, y){
+				let n = x * 374761393 + y * 668265263;
+				n = (n ^ (n >> 13)) * 1274126177;
+				n = n ^ (n >> 16);
+				return (n >>> 0) / 4294967295;
+			}
+			// Smoothstep for interpolation (makes noise less blocky).
+			function smooth(t){
+				return t * t * (3 - 2 * t);
+			}
+			// Linear interpolation.
+			function lerp(a, b, t){
+				return a + (b - a) * t;
+			}
+			//
+			// 2D value noise:
+			//
+			// 1) Hash the four corners of the integer grid cell.
+			// 2) Bilinear interpolate using smoothstep.
+			// Result is continuous and looks "soft".
+			//
+			function noise2(x, y){
+				const xi = Math.floor(x);
+				const yi = Math.floor(y);
+				const xf = x - xi;
+				const yf = y - yi;
+				const u = smooth(xf);
+				const v = smooth(yf);
+				const a = hash2(xi, yi);
+				const b = hash2(xi + 1, yi);
+				const d = hash2(xi, yi + 1);
+				const e = hash2(xi + 1, yi + 1);
+				return lerp(lerp(a, b, u), lerp(d, e, u), v);
+			}
+			//
+			// fbm (fractal brownian motion):
+			//
+			// Sum a few octaves of noise.
+			// - Frequency increases each octave (more detail).
+			// - Amplitude decreases each octave (less influence).
+			//
+			// We also add a small animated drift per-octave so the texture
+			// slowly flows over time.
+			//
+			function fbm(x, y, t){
+				let sum = 0;
+				let amp = 0.62;
+				let freq = 0.85;
+				for (let i = 0; i < 4; i++){
+					const dx = Math.sin(t * 0.00025 + i * 2.1) * 0.9;
+					const dy = Math.cos(t * 0.00022 + i * 1.7) * 0.9;
+					sum += amp * noise2(x * freq + dx, y * freq + dy);
+					amp *= 0.52;
+					freq *= 1.85;
+				}
+				return sum;
+			}
+
+			function resize(){
+				//
+				// Resize canvas to device-pixel resolution.
+				//
+				// Important: we must draw into the full pixel buffer.
+				// If we accidentally draw using CSS sizes, the background can
+				// appear only in a subset of the viewport on high-DPI screens.
+				//
+				// We clamp DPR to 2 for performance.
+				//
+				const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+				const nw = Math.max(1, Math.floor(innerWidth * dpr));
+				const nh = Math.max(1, Math.floor(innerHeight * dpr));
+				if (nw === w && nh === h) return;
+				w = nw;
+				h = nh;
+				c.width = w;
+				c.height = h;
+				scale = dpr;
+
+				//
+				// Offscreen noise buffer size.
+				// Smaller = faster but more "pixelated" when scaled up.
+				//
+				bufC.width = 200;
+				bufC.height = 200;
+				img = bufG.createImageData(bufC.width, bufC.height);
+
+				// Pick a shape count proportional to screen area.
+				shapeN = Math.floor(
+					Math.max(18, Math.min(70, (w * h) / 70000)),
+				);
+				shapes = makeShapes(shapeN);
+			}
+
+			function rnd(a, b){
+				return a + Math.random() * (b - a);
+			}
+			function pick(arr){
+				return arr[Math.floor(Math.random() * arr.length)];
+			}
+			function makeShapes(n){
+				//
+				// Create moving primitives.
+				//
+				// We store positions in normalized coords (0..1), then convert
+				// to pixel coords each frame by multiplying by w/h.
+				// That makes resizing easy.
+				//
+				const out = [];
+				const types = ['line', 'circle', 'poly'];
+				for (let i = 0; i < n; i++){
+					const type = pick(types);
+					const s = {
+						type,
+						x: rnd(0, 1),
+						y: rnd(0, 1),
+						vx: rnd(-0.018, 0.018),
+						vy: rnd(-0.012, 0.012),
+						rot: rnd(0, Math.PI * 2),
+						vr: rnd(-0.35, 0.35),
+						r: rnd(14, 92),
+						sides: Math.floor(rnd(3, 9)),
+						w: rnd(80, 240),
+						h: rnd(10, 80),
+						a: rnd(0.06, 0.18),
+						aw: rnd(1.0, 2.8),
+					};
+					out.push(s);
+				}
+				return out;
+			}
+			function wrap01(v){
+				// Wrap with some overscan so shapes drift in/out smoothly.
+				if (v < -0.2) return v + 1.4;
+				if (v > 1.2) return v - 1.4;
+				return v;
+			}
+			function strokeCol(alpha){
+				return `rgba(226,232,240,${alpha})`;
+			}
+			function accentCol(alpha){
+				return `rgba(63,200,192,${alpha})`;
+			}
+			function drawShape(s, t){
+				// Draw outlines only (no fills) to keep it readable.
+				// We modulate alpha slightly so shapes "breathe".
+				const cx = s.x * w;
+				const cy = s.y * h;
+				const rot = s.rot;
+				const phase = Math.sin((t * 0.001) + s.aw);
+				const a0 = clamp(s.a + phase * 0.06, 0.04, 0.26);
+				g.lineWidth = 1.2;
+				g.strokeStyle = (s.type === 'line')
+					? accentCol(a0)
+					: strokeCol(a0);
+				if (s.type === 'circle'){
+					g.beginPath();
+					g.arc(cx, cy, s.r, 0, Math.PI * 2);
+					g.stroke();
+					return;
+				}
+				if (s.type === 'line'){
+					const lx = Math.cos(rot) * (s.w / 2);
+					const ly = Math.sin(rot) * (s.w / 2);
+					g.beginPath();
+					g.moveTo(cx - lx, cy - ly);
+					g.lineTo(cx + lx, cy + ly);
+					g.stroke();
+					return;
+				}
+				const sides = clamp(s.sides, 3, 10);
+				g.beginPath();
+				for (let i = 0; i < sides; i++){
+					const ang = rot + (i / sides) * Math.PI * 2;
+					const rr = s.r * (0.78 + 0.30 * Math.sin(s.aw + i));
+					const px = cx + Math.cos(ang) * rr;
+					const py = cy + Math.sin(ang) * rr;
+					if (i === 0) g.moveTo(px, py);
+					else g.lineTo(px, py);
+				}
+				g.closePath();
+				g.stroke();
+			}
+
+			let last = 0;
+			function frame(t){
+				if (!img){
+					resize();
+				}
+				//
+				// dt is capped so the animation remains stable.
+				// (e.g. if the tab was inactive and then resumes)
+				//
+				const dt = Math.min(50, t - last);
+				last = t;
+				const buf = img.data;
+				const ww = img.width;
+				const hh = img.height;
+				// Time offset for drifting the noise field.
+				const sp = (t * 0.00030) + (dt * 0.00002);
+				for (let y = 0; y < hh; y++){
+					for (let x = 0; x < ww; x++){
+						const nx = (x / ww) * 4.2;
+						const ny = (y / hh) * 4.2;
+						// "Warp" the second fbm lookup using the first.
+						// This breaks up repetition and looks more fluid.
+						const warp = fbm(nx + sp, ny - sp, t);
+						const v = fbm(nx + warp, ny - warp, t);
+						const k = clamp((v - 0.28) * 2.9, 0, 1);
+						const i = (y * ww + x) * 4;
+						buf[i + 0] = 226;
+						buf[i + 1] = 232;
+						buf[i + 2] = 240;
+						buf[i + 3] = Math.floor(255 * (k * 0.92));
+					}
+				}
+
+				g.setTransform(1, 0, 0, 1, 0, 0);
+				g.clearRect(0, 0, w, h);
+				g.imageSmoothingEnabled = true;
+
+				// 1) Draw the noise buffer scaled up to full screen.
+				bufG.putImageData(img, 0, 0);
+				g.globalAlpha = 0.85;
+				g.drawImage(bufC, 0, 0, ww, hh, 0, 0, w, h);
+				g.globalAlpha = 1;
+
+				// 2) Update and draw the moving shapes on top.
+				// We update in normalized space, then draw in pixel space.
+				for (let i = 0; i < shapes.length; i++){
+					const s = shapes[i];
+					s.x = wrap01(s.x + (s.vx * dt) / 1000);
+					s.y = wrap01(s.y + (s.vy * dt) / 1000);
+					s.rot += (s.vr * dt) / 1000;
+					drawShape(s, t);
+				}
+				requestAnimationFrame(frame);
+			}
+
+			window.addEventListener('resize', resize);
+			resize();
+			requestAnimationFrame(frame);
+		})();
+	</script>
 </body>
 </html>

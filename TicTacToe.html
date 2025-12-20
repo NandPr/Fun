@@ -1,0 +1,3341 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<!--
+		TicTacToe.html — 2D + 3D – Prabhu & GPT 5.2
+		Version: 1.0
+ 
+		Capabilities
+		- Two board types:
+			- 2D Tic Tac Toe (classic 3×3)
+			- 3D Tic Tac Toe (3 stacked 3×3 layers = 3×3×3)
+		- Modes: 2 Players (Local) or 1 Player vs CPU (Easy/Hard)
+		- 3D rendering + physics (Three.js + cannon-es loaded from CDN at
+		  runtime)
+		- Sound toggle (simple synthesized beeps)
+		- Game stats: turn/state/move count, timer, winner history
+		  (localStorage when available)
+		- Visual effects: click spark, drag trail (3D), graffiti win burst,
+		  win-line piece bounce
+		- Undo (1 ply in PvP; 2 plies in CPU mode when applicable)
+		- Built-in test runner UI (no external tooling required)
+
+		Rules
+		- 2D: first to 3-in-a-row wins (rows/cols/diagonals).
+		- 3D: first to 3-in-a-row anywhere in 3×3×3 wins, including:
+			- within-layer rows/cols/diagonals
+			- vertical lines through layers
+			- cross-layer diagonals and space diagonals
+		- Draw when no legal moves remain.
+
+		Controls / Input (desktop + mobile)
+		- Tap/click a cell to place your piece.
+		- 3D view:
+			- Drag with one pointer to rotate.
+			- Pinch / multi-touch to zoom
+			  (no accidental placement on multi-touch gestures).
+		- A move is committed on pointer-up only if the gesture was a clean tap
+		  (no drag).
+
+		How to run
+		- Recommended: serve via a local web server (ES modules + CDN imports).
+			Examples:
+			- Python: `python -m http.server`
+			  then open http://localhost:8000/TicTacToe.html
+			- Node: `npx serve` then open the served URL
+		- Direct file:// may work in some browsers, but module/CORS rules can
+		  block imports.
+
+		URL flags
+		- `?2D` or `?2d=1` forces 2D mode
+		- `?3D` or `?3d=1` forces 3D mode
+		- `?tests=1` shows the test runner
+	-->
+	<title>2D Tic Tac Toe</title>
+	<style>
+		:root{
+			--bg1:#0b1220;
+			--bg2:#121b2e;
+			--card:rgba(255,255,255,.72);
+			--ink:#223;
+			--muted:#556;
+			--accent:#2b9cff;
+			--accent2:#ff5aa5;
+			--good:#16a34a;
+			--bad:#ef4444;
+			--shadow:0 10px 30px rgba(0,0,0,.12);
+			--radius:18px;
+			--mono:
+				ui-monospace,
+				SFMono-Regular,
+				Menlo,
+				Monaco,
+				Consolas,
+				"Liberation Mono",
+				"Courier New",
+				monospace;
+			--sans:
+				system-ui,
+				-apple-system,
+				"Segoe UI",
+				Roboto,
+				Arial,
+				sans-serif;
+		}
+		*{box-sizing:border-box}
+		html,body{height:100%}
+		body{
+			margin:0;
+			font-family:var(--sans);
+			color:var(--ink);
+			background:
+				radial-gradient(
+					circle at 15% 20%,
+					rgba(255,90,165,.16),
+					transparent 46%
+				),
+				radial-gradient(
+					circle at 80% 15%,
+					rgba(43,156,255,.18),
+					transparent 48%
+				),
+				radial-gradient(
+					circle at 25% 85%,
+					rgba(22,163,74,.10),
+					transparent 50%
+				),
+				linear-gradient(120deg,var(--bg1),var(--bg2));
+			overflow:hidden;
+		}
+		.app{
+			position:relative;
+			width:min(1100px, calc(100vw - 28px));
+			height:min(760px, calc(100vh - 28px));
+			margin:14px auto;
+			display:grid;
+			grid-template-columns: 340px 1fr;
+			gap:14px;
+		}
+		@media (max-width: 980px){
+			body{overflow:auto}
+			.app{height:auto; grid-template-columns: 1fr;}
+		}
+		.panel{
+			background:var(--card);
+			backdrop-filter: blur(10px);
+			border-radius:var(--radius);
+			box-shadow:var(--shadow);
+			border:1px solid rgba(255,255,255,.55);
+			overflow:hidden;
+		}
+		.sidebar{padding:14px}
+		.h1{
+			font-weight:800;
+			letter-spacing:.2px;
+			font-size:1.25rem;
+			margin:2px 0 2px;
+		}
+		.sub{color:var(--muted); font-size:.95rem; margin:0 0 12px}
+		.row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+		.row > *{flex: 1 1 auto}
+		.row.alignCenter{align-items:center}
+		.soundLabel{display:flex; align-items:center; gap:10px; flex:1 1 auto}
+		.soundSpacer{flex:1 1 auto; text-align:right}
+		#coverageOut{text-align:right}
+		label{font-size:.92rem; color:var(--muted)}
+		select,input[type="checkbox"]{accent-color: var(--accent)}
+		select{
+			width:100%;
+			padding:10px 12px;
+			border-radius:12px;
+			border:1px solid rgba(0,0,0,.10);
+			background: rgba(255,255,255,.85);
+			outline:none;
+		}
+		button{
+			appearance:none;
+			border:0;
+			border-radius:14px;
+			padding:12px 14px;
+			font-weight:700;
+			cursor:pointer;
+			background: linear-gradient(135deg, var(--accent), #6ee7ff);
+			color:#062033;
+			box-shadow: 0 10px 18px rgba(43,156,255,.22);
+			transition: transform .12s ease, filter .12s ease;
+		}
+		button.secondary{
+			background: linear-gradient(135deg, #ffd166, #ff5aa5);
+			box-shadow: 0 10px 18px rgba(255,90,165,.18);
+		}
+		button:active{transform: translateY(1px); filter:saturate(0.95)}
+		.kv{
+			display:grid;
+			grid-template-columns: 1fr auto;
+			gap:8px 10px;
+			padding:10px 12px;
+			border-radius:14px;
+			background: rgba(255,255,255,.62);
+			border:1px solid rgba(0,0,0,.07);
+		}
+		.kv div:nth-child(odd){color:var(--muted)}
+		.kv div:nth-child(even){font-family:var(--mono); font-weight:700}
+		.tabs{
+			display:flex;
+			gap:8px;
+			padding:10px;
+			border-bottom: 1px solid rgba(0,0,0,.08);
+			background: rgba(255,255,255,.4);
+		}
+		.tab{
+			flex: 0 0 auto;
+			padding:10px 12px;
+			border-radius:999px;
+			border:1px solid rgba(0,0,0,.10);
+			background: rgba(255,255,255,.7);
+			font-weight:800;
+			cursor:pointer;
+			user-select:none;
+		}
+		.tab[aria-selected="true"]{
+			background: linear-gradient(
+				135deg,
+				rgba(43,156,255,.35),
+				rgba(255,90,165,.25)
+			);
+			border-color: rgba(43,156,255,.35);
+		}
+		.content{padding:14px}
+		.small{font-size:.92rem; color:var(--muted)}
+		.status{
+			margin-top:10px;
+			padding:12px;
+			border-radius:14px;
+			background: rgba(255,255,255,.62);
+			border:1px solid rgba(0,0,0,.07);
+			min-height:52px;
+		}
+		.status strong{font-family:var(--mono)}
+		.divider{height:1px; background: rgba(0,0,0,.08); margin:12px 0}
+		.table{
+			width:100%;
+			border-collapse: separate;
+			border-spacing:0;
+			overflow:hidden;
+			border-radius:14px;
+			border:1px solid rgba(0,0,0,.08);
+			background: rgba(255,255,255,.62);
+		}
+		.table th,
+		.table td{
+			padding:10px 10px;
+			font-size:.92rem;
+			text-align:left;
+			border-bottom:1px solid rgba(0,0,0,.06);
+		}
+		.table th{
+			color:var(--muted);
+			font-weight:800;
+			background: rgba(255,255,255,.45);
+		}
+		.table tr:last-child td{border-bottom:0}
+		.pill{
+			display:inline-block;
+			padding:3px 9px;
+			border-radius:999px;
+			font-weight:800;
+			font-family:var(--mono);
+		}
+		.pill.x{
+			background: rgba(43,156,255,.18);
+			color:#11457a;
+			border:1px solid rgba(43,156,255,.3);
+		}
+		.pill.o{
+			background: rgba(255,90,165,.16);
+			color:#7a123f;
+			border:1px solid rgba(255,90,165,.28);
+		}
+		.pill.d{
+			background: rgba(0,0,0,.06);
+			color:#233;
+			border:1px solid rgba(0,0,0,.12);
+		}
+
+		.stage{
+			position:relative;
+			display:flex;
+			flex-direction:column;
+			min-height: 540px;
+		}
+		#canvasWrap{
+			position:relative;
+			width:100%;
+			height:100%;
+			min-height: 540px;
+		}
+		#trailLayer{
+			position:absolute;
+			inset:0;
+			pointer-events:none;
+			overflow:hidden;
+		}
+		.trailDot{
+			position:absolute;
+			width:12px;
+			height:12px;
+			border-radius:999px;
+			background: radial-gradient(
+				circle at 30% 30%,
+				rgba(255,255,255,.95),
+				rgba(255,243,196,.55) 45%,
+				rgba(255,160,90,0) 72%
+			);
+			transform: translate(-50%, -50%) scale(1);
+			opacity: 1;
+		}
+		canvas{
+			display:block;
+			width:100%;
+			height:100%;
+			touch-action:none;
+		}
+		.hud{
+			position:absolute;
+			left:14px;
+			bottom:14px;
+			top:auto;
+			padding:10px 12px;
+			border-radius:14px;
+			background: rgba(255,255,255,.72);
+			border: 1px solid rgba(0,0,0,.10);
+			box-shadow: 0 10px 18px rgba(0,0,0,.08);
+			max-width: min(420px, calc(100% - 28px));
+			pointer-events:none;
+		}
+		.hud .line{font-family:var(--mono); font-weight:800}
+		.badge{
+			display:inline-flex;
+			gap:8px;
+			align-items:center;
+			margin-top:8px;
+			font-size:.9rem;
+			color:var(--muted);
+		}
+		.dot{width:10px;height:10px;border-radius:50%}
+
+		#testRoot{
+			padding:14px;
+			overflow:auto;
+			display:block;
+			height: min(760px, calc(100vh - 28px));
+		}
+		#testResults{
+			max-height: calc(100% - 120px);
+			overflow:auto;
+			padding-right: 6px;
+		}
+		.testTitle{font-weight:900; font-size:1.2rem; margin:0 0 10px}
+		.testRow{
+			display:flex;
+			gap:10px;
+			align-items:center;
+			padding:10px 12px;
+			border-radius:12px;
+			border:1px solid rgba(0,0,0,.08);
+			background: rgba(255,255,255,.62);
+			margin-bottom:8px;
+		}
+		.pass{color:var(--good); font-weight:900}
+		.fail{color:var(--bad); font-weight:900}
+		code{font-family:var(--mono)}
+		#credit{
+			position:fixed;
+			left:0;
+			right:0;
+			bottom:6px;
+			text-align:center;
+			font-size:.78rem;
+			color:var(--muted);
+			opacity:.8;
+			pointer-events:none;
+			z-index:50;
+		}
+	</style>
+</head>
+<body>
+	<div class="app panel" id="appRoot" style="display:none">
+		<div class="panel sidebar">
+			<div class="h1">2D Tic Tac Toe</div>
+			<div class="sub">Click a cell to play.</div>
+
+			<div class="tabs" role="tablist" aria-label="Views">
+				<div
+					class="tab"
+					id="tabGame"
+					role="tab"
+					tabindex="0"
+					aria-selected="true"
+					aria-controls="panelGame"
+				>Game</div>
+				<div
+					class="tab"
+					id="tabDetails"
+					role="tab"
+					tabindex="-1"
+					aria-selected="false"
+					aria-controls="panelDetails"
+				>Details</div>
+			</div>
+
+			<div
+				class="content"
+				id="panelGame"
+				role="tabpanel"
+				aria-labelledby="tabGame"
+			>
+				<div class="row" style="gap:12px">
+					<div style="flex:1 1 100%">
+						<label for="boardKind">Board</label>
+						<select id="boardKind">
+							<option value="2d" selected>2D Tic Tac Toe</option>
+							<option value="3d">3D Tic Tac Toe</option>
+						</select>
+					</div>
+					<div style="flex:1 1 100%">
+						<label for="mode">Mode</label>
+						<select id="mode">
+							<option value="pvp">2 Players (Local)</option>
+							<option value="cpu">1 Player vs CPU</option>
+						</select>
+					</div>
+					<div style="flex:1 1 100%">
+						<label for="youAre">When vs CPU, you are</label>
+						<select id="youAre">
+							<option value="X">X (goes first)</option>
+							<option value="O">O (goes second)</option>
+						</select>
+					</div>
+					<div style="flex:1 1 100%">
+						<label for="cpuSkill">CPU Strength</label>
+						<select id="cpuSkill">
+							<option value="easy">Easy</option>
+							<option value="hard" selected>Hard</option>
+						</select>
+					</div>
+				</div>
+
+				<div class="divider"></div>
+
+				<div class="row">
+					<button id="newGame">New Game</button>
+					<button id="undo" title="Undo Last Move">Undo</button>
+					<button
+						id="resetStats"
+						class="secondary"
+						title="Clears Winners History"
+					>Reset Stats</button>
+				</div>
+
+				<div class="divider"></div>
+
+				<div class="kv">
+					<div>Turn</div><div id="turn">X</div>
+					<div>State</div><div id="state">Playing</div>
+					<div>Moves</div><div id="moves">0</div>
+				</div>
+
+				<div class="status" id="status"></div>
+
+				<div class="divider"></div>
+
+				<div class="row alignCenter">
+					<label class="soundLabel">
+						<input type="checkbox" id="sound" checked />
+						Sound
+					</label>
+					<div class="small soundSpacer"></div>
+				</div>
+			</div>
+
+			<div
+				class="content"
+				id="panelDetails"
+				role="tabpanel"
+				aria-labelledby="tabDetails"
+				hidden
+			>
+				<div class="kv">
+					<div>Time on Current Game</div>
+					<div id="timeOnGame">0.0s</div>
+					<div>History Size (N)</div><div id="histN">20</div>
+				</div>
+
+				<div class="divider"></div>
+				<table class="table" aria-label="Winner history">
+					<thead>
+						<tr>
+							<th>When</th>
+							<th>Winner</th>
+							<th>Moves</th>
+							<th>Duration</th>
+						</tr>
+					</thead>
+					<tbody id="historyBody"></tbody>
+				</table>
+				<div class="small" style="margin-top:10px"></div>
+			</div>
+		</div>
+
+		<div class="panel stage">
+			<div id="canvasWrap">
+				<div class="hud" id="hud">
+					<div class="line" id="hudLine">Click a cell to play.</div>
+					<div class="small" id="hudSub"></div>
+				</div>
+				<div id="trailLayer" aria-hidden="true"></div>
+				<canvas id="c"></canvas>
+			</div>
+		</div>
+	</div>
+
+	<div class="app panel" id="testRoot" style="display:none">
+		<div style="padding:14px">
+			<div class="testTitle">TicTacToe Unit Tests</div>
+			<div class="small">Test Runner</div>
+			<div class="divider"></div>
+			<div class="row">
+				<button id="runTests">Run Tests</button>
+				<div class="small" id="coverageOut"></div>
+			</div>
+			<div class="divider"></div>
+			<div id="testResults"></div>
+		</div>
+	</div>
+
+	<div id="credit" aria-hidden="true">
+		(c) Tic-Tac-Toe 3D - Prabhu &amp; GPT 5.2
+	</div>
+
+	<script type="module">
+		//
+		// Architecture overview
+		// ---------------------
+		//
+		// The code is intentionally split into two broad parts:
+		//
+		// 1) "Pure" game logic
+		//    - Board representation, win-line generation, evaluation,
+		//      legal moves, applyMove, and CPU move selection.
+		//    - These functions are designed to be deterministic and easy
+		//      to unit test (no DOM, no rendering).
+		//
+		// 2) UI + rendering
+		//    - DOM event wiring, HUD updates, history/stats, audio beeps,
+		//      and optional 3D visualization with physics.
+		//
+		// The unit tests (enabled via ?tests=1) primarily target section 1.
+		//
+		// NOTE: We dynamically import 3D/physics libs so the UI can still
+		// render
+		// even if the CDN is blocked/offline. OrbitControls needs a CDN that
+		// rewrites
+		// its internal bare imports; jsDelivr's "+esm" does that.
+		const CDN = {
+			THREE:
+				'https://cdn.jsdelivr.net/npm/three@0.160.0/build/' +
+				'three.module.js',
+			ORBIT:
+				'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/' +
+				'controls/OrbitControls.js/+esm',
+			CANNON: 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/+esm',
+		};
+		let THREE;
+		let OrbitControls;
+		let CANNON;
+
+		async function load3dLibs(){
+			//
+			// Loads external ESM modules at runtime.
+			//
+			// This is delayed until 3D is actually needed so the rest of the
+			// page still works when WebGL/CDN is blocked.
+			//
+			const threeMod = await import(CDN.THREE);
+			const orbitMod = await import(CDN.ORBIT);
+			const cannonMod = await import(CDN.CANNON);
+			THREE = threeMod;
+			OrbitControls = orbitMod.OrbitControls;
+			CANNON = cannonMod;
+			if (!THREE || !OrbitControls || !CANNON){
+				throw new Error('3D libs failed to load');
+			}
+		}
+
+		const qs = new URLSearchParams(location.search);
+		const testsMode = qs.get('tests') === '1';
+
+		function forcedBoardKindFromQuery(){
+			// Supports `?2D` / `?3D` (and also `?2d=1` / `?3d=1`).
+			// If both are present, 3D wins.
+			const s = (location.search || '').toLowerCase();
+			const has2 = /(?:^|[?&])2d(?:$|[=&])/.test(s);
+			const has3 = /(?:^|[?&])3d(?:$|[=&])/.test(s);
+			if (has3) return '3d';
+			if (has2) return '2d';
+			return null;
+		}
+
+		function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+		function nowMs(){ return performance.now(); }
+		function formatSeconds(s){
+			if (!isFinite(s)) return '—';
+			return `${s.toFixed(1)}s`;
+		}
+		function safeJsonParse(s, fallback){
+			try { return JSON.parse(s); } catch { return fallback; }
+		}
+
+		// -------------------------
+		// Coverage (tiny)
+		// -------------------------
+		//
+		// This is a minimal "coverage" counter for the built-in unit tests.
+		//
+		// - COVER.define([ids...]) declares which points exist.
+		// - COVER.hit(id) increments a counter.
+		// - COVER.report() returns percentage and uncovered IDs.
+		//
+		// It is not a full coverage tool; it simply provides quick feedback
+		// inside this single HTML file.
+		//
+		const COVER = (() => {
+			const defined = new Set();
+			const hits = new Map();
+			function define(ids){
+				for (const id of ids){
+					defined.add(id);
+					if (!hits.has(id)) hits.set(id, 0);
+				}
+			}
+			function hit(id){
+				defined.add(id);
+				hits.set(id, (hits.get(id) ?? 0) + 1);
+			}
+			function report(){
+				const total = defined.size;
+				let covered = 0;
+				for (const id of defined){
+					if ((hits.get(id) ?? 0) > 0) covered++;
+				}
+				const pct = total ? (covered / total) * 100 : 100;
+				return {
+					total,
+					covered,
+					pct,
+					uncovered: Array.from(defined).filter(
+						(id) => (hits.get(id) ?? 0) === 0,
+					),
+				};
+			}
+			function reset(){
+				for (const id of defined) hits.set(id, 0);
+			}
+			return { define, hit, report, reset };
+		})();
+		function escapeHtml(s){
+			return String(s)
+				.replaceAll('&', '&amp;')
+				.replaceAll('<', '&lt;')
+				.replaceAll('>', '&gt;')
+				.replaceAll('"', '&quot;')
+				.replaceAll("'", '&#39;');
+		}
+
+		// -------------------------
+		// Game logic (pure)
+		// -------------------------
+		//
+		// Board representation:
+		// - 2D: length 9 array, indices 0..8
+		// - 3D: length 27 array, indices 0..26 (layer,row,col)
+		// Cells contain: '' (EMPTY), 'X', or 'O'.
+		//
+		const EMPTY = '';
+		const X = 'X';
+		const O = 'O';
+		const WIN_LINES_2D = [
+			[0,1,2],[3,4,5],[6,7,8],
+			[0,3,6],[1,4,7],[2,5,8],
+			[0,4,8],[2,4,6]
+		];
+
+		function idx3(l, r, c){
+			// Converts 3D coordinates into a flat index.
+			// l: 0..2 layer, r: 0..2 row, c: 0..2 col.
+			return (l * 9) + (r * 3) + c;
+		}
+
+		function generateWinLines3D(){
+			//
+			// Generates every 3-in-a-row line in a 3×3×3 cube.
+			//
+			// Categories:
+			// - In-layer rows/cols/diagonals
+			// - Vertical lines through layers
+			// - Diagonals on the 3 vertical planes
+			// - 4 space diagonals corner-to-corner
+			//
+			// Result: array of [a,b,c] index triples.
+			//
+			const lines = [];
+			// Rows/cols within each layer.
+			for (let l = 0; l < 3; l++){
+				for (let r = 0; r < 3; r++){
+					lines.push([idx3(l, r, 0), idx3(l, r, 1), idx3(l, r, 2)]);
+				}
+				for (let c = 0; c < 3; c++){
+					lines.push([idx3(l, 0, c), idx3(l, 1, c), idx3(l, 2, c)]);
+				}
+				lines.push([idx3(l, 0, 0), idx3(l, 1, 1), idx3(l, 2, 2)]);
+				lines.push([idx3(l, 0, 2), idx3(l, 1, 1), idx3(l, 2, 0)]);
+			}
+			// Vertical lines through layers.
+			for (let r = 0; r < 3; r++){
+				for (let c = 0; c < 3; c++){
+					lines.push([idx3(0, r, c), idx3(1, r, c), idx3(2, r, c)]);
+				}
+			}
+			// Diagonals on vertical planes (layer-row and layer-col).
+			for (let r = 0; r < 3; r++){
+				lines.push([idx3(0, r, 0), idx3(1, r, 1), idx3(2, r, 2)]);
+				lines.push([idx3(0, r, 2), idx3(1, r, 1), idx3(2, r, 0)]);
+			}
+			for (let c = 0; c < 3; c++){
+				lines.push([idx3(0, 0, c), idx3(1, 1, c), idx3(2, 2, c)]);
+				lines.push([idx3(0, 2, c), idx3(1, 1, c), idx3(2, 0, c)]);
+			}
+			// Space diagonals.
+			lines.push([idx3(0, 0, 0), idx3(1, 1, 1), idx3(2, 2, 2)]);
+			lines.push([idx3(0, 0, 2), idx3(1, 1, 1), idx3(2, 2, 0)]);
+			lines.push([idx3(0, 2, 0), idx3(1, 1, 1), idx3(2, 0, 2)]);
+			lines.push([idx3(0, 2, 2), idx3(1, 1, 1), idx3(2, 0, 0)]);
+			return lines;
+		}
+		const WIN_LINES_3D = generateWinLines3D();
+
+		function other(p){ return p === X ? O : X; }
+
+		function evaluateBoard2D(board){
+			// Evaluates a 3×3 board and returns:
+			// - state: 'playing' | 'win' | 'draw'
+			// - winner: 'X' | 'O' | null
+			// - line: winning index triple (or null)
+			COVER.hit('evaluateBoard');
+			for (const [a,b,c] of WIN_LINES_2D){
+				const v = board[a];
+				if (v && v === board[b] && v === board[c]){
+					COVER.hit('evaluateBoard.win');
+					return { state: 'win', winner: v, line: [a,b,c] };
+				}
+			}
+			if (board.every(Boolean)){
+				COVER.hit('evaluateBoard.draw');
+				return { state: 'draw', winner: null, line: null };
+			}
+			COVER.hit('evaluateBoard.playing');
+			return { state: 'playing', winner: null, line: null };
+		}
+
+		function evaluateBoard3D(board){
+			// Same contract as evaluateBoard2D, but checks 49 win lines.
+			COVER.hit('evaluateBoard3D');
+			for (const [a, b, c] of WIN_LINES_3D){
+				const v = board[a];
+				if (v && v === board[b] && v === board[c]){
+					COVER.hit('evaluateBoard3D.win');
+					return { state: 'win', winner: v, line: [a, b, c] };
+				}
+			}
+			if (board.every(Boolean)){
+				COVER.hit('evaluateBoard3D.draw');
+				return { state: 'draw', winner: null, line: null };
+			}
+			COVER.hit('evaluateBoard3D.playing');
+			return { state: 'playing', winner: null, line: null };
+		}
+
+		function evaluateBoard(board, kind){
+			if (kind === '3d') return evaluateBoard3D(board);
+			return evaluateBoard2D(board);
+		}
+
+		function legalMoves(board){
+			// Returns indices of empty cells.
+			COVER.hit('legalMoves');
+			const out = [];
+			for (let i = 0; i < board.length; i++) if (!board[i]) out.push(i);
+			return out;
+		}
+
+		function applyMove(board, idx, player){
+			// Returns a NEW board array with the move applied.
+			// Throws for invalid index or occupied cell.
+			COVER.hit('applyMove');
+			if (!Number.isInteger(idx)){
+				COVER.hit('applyMove.badIdx');
+				throw new Error('idx must be an integer');
+			}
+			if (idx < 0 || idx >= board.length){
+				COVER.hit('applyMove.badIdx');
+				throw new Error('idx out of range');
+			}
+			if (board[idx]){
+				COVER.hit('applyMove.occupied');
+				throw new Error('cell not empty');
+			}
+			COVER.hit('applyMove.ok');
+			const next = board.slice();
+			next[idx] = player;
+			return next;
+		}
+
+		function minimax(board, playerToMove, maximizingPlayer, memo){
+			//
+			// Minimax search (2D only).
+			//
+			// This is used for "Hard" CPU in 2D.
+			// 3D uses a small heuristic instead (full minimax is expensive).
+			//
+			// memo is a Map cache keyed by board + player turn.
+			// Return shape: { score, move }.
+			//
+			COVER.hit('minimax');
+			const key =
+				board.join('|') + ':' + playerToMove + ':' + maximizingPlayer;
+			const cached = memo.get(key);
+			if (cached) return cached;
+
+			// Evaluate terminal state.
+			const evalr = evaluateBoard2D(board);
+			if (evalr.state === 'win'){
+				COVER.hit('minimax.baseWin');
+				const score = (evalr.winner === maximizingPlayer) ? 10 : -10;
+				const res = { score, move: null };
+				memo.set(key, res);
+				return res;
+			}
+			if (evalr.state === 'draw'){
+				COVER.hit('minimax.baseDraw');
+				const res = { score: 0, move: null };
+				memo.set(key, res);
+				return res;
+			}
+
+			let bestScore =
+				(playerToMove === maximizingPlayer) ? -Infinity : Infinity;
+			let bestMove = null;
+			for (const m of legalMoves(board)){
+				const child = applyMove(board, m, playerToMove);
+				const r = minimax(
+					child,
+					other(playerToMove),
+					maximizingPlayer,
+					memo,
+				);
+				const score = r.score;
+				if (playerToMove === maximizingPlayer){
+					if (score > bestScore){ bestScore = score; bestMove = m; }
+				} else {
+					if (score < bestScore){ bestScore = score; bestMove = m; }
+				}
+			}
+			const res = { score: bestScore, move: bestMove };
+			memo.set(key, res);
+			return res;
+		}
+
+		function cpuPick(board, cpuPlayer, skill){
+			COVER.hit('cpuPick');
+			const moves = legalMoves(board);
+			if (moves.length === 0) return null;
+			// 3D board: simple heuristic (win, block, center, else random).
+			if (board.length === 27){
+				//
+				// 3D heuristic rationale:
+				// - Try immediate win.
+				// - Else block opponent's immediate win.
+				// - Else prefer the cube center.
+				// - Else pick a random legal move.
+				//
+				COVER.hit('cpuPick.3d');
+				const lines = WIN_LINES_3D;
+				function findLineMove(p){
+					for (const [a, b, c] of lines){
+						const v = [board[a], board[b], board[c]];
+						const cnt = v.filter((x) => x === p).length;
+						const empties = [a, b, c].filter((i) => !board[i]);
+						if (cnt === 2 && empties.length === 1){
+							return empties[0];
+						}
+					}
+					return null;
+				}
+				const win = findLineMove(cpuPlayer);
+				if (win != null) return win;
+				const block = findLineMove(other(cpuPlayer));
+				if (block != null) return block;
+				const center = idx3(1, 1, 1);
+				if (!board[center]) return center;
+				return moves[Math.floor(Math.random() * moves.length)];
+			}
+			if (skill === 'easy'){
+				// Prefer center, else random.
+				COVER.hit('cpuPick.easy');
+				if (!board[4]){
+					COVER.hit('cpuPick.easy.center');
+					return 4;
+				}
+				COVER.hit('cpuPick.easy.random');
+				return moves[Math.floor(Math.random() * moves.length)];
+			}
+			COVER.hit('cpuPick.hard');
+			const memo = new Map();
+			const r = minimax(board, cpuPlayer, cpuPlayer, memo);
+			return r.move ?? moves[0];
+		}
+
+		// -------------------------
+		// Stats (localStorage)
+		// -------------------------
+		//
+		// We persist only a small recent history list.
+		// In privacy-restricted contexts localStorage can throw; we fall
+		// back to an in-memory Map so the app still runs.
+		//
+		const STATS_KEY = 'ttt3d.stats.v1';
+		const HISTORY_N = 20;
+
+		const storage = (() => {
+			const mem = new Map();
+			function hasLocalStorage(){
+				// localStorage presence is not enough; access can throw.
+				try {
+					const k = '__ttt3d_ls_test__';
+					localStorage.setItem(k, '1');
+					localStorage.removeItem(k);
+					return true;
+				} catch {
+					return false;
+				}
+			}
+			const ok = hasLocalStorage();
+			return {
+				getItem(key){
+					if (ok){
+						try {
+							return localStorage.getItem(key);
+						} catch {
+							// Fall back to memory store.
+						}
+					}
+					return mem.has(key) ? mem.get(key) : null;
+				},
+				setItem(key, val){
+					if (ok){
+						try {
+							localStorage.setItem(key, val);
+							return;
+						} catch {
+							// Quota/privacy can still throw at runtime.
+						}
+					}
+					mem.set(key, val);
+				},
+				removeItem(key){
+					if (ok){
+						try {
+							localStorage.removeItem(key);
+							return;
+						} catch {
+							// Ignore and fall back to memory store.
+						}
+					}
+					mem.delete(key);
+				},
+			};
+		})();
+
+		function loadStats(){
+			COVER.hit('loadStats');
+			const s = storage.getItem(STATS_KEY);
+			const data = safeJsonParse(s, { history: [] });
+			if (!data || !Array.isArray(data.history)) return { history: [] };
+			return { history: data.history.slice(0, HISTORY_N) };
+		}
+		function saveStats(stats){
+			COVER.hit('saveStats');
+			storage.setItem(
+				STATS_KEY,
+				JSON.stringify({ history: stats.history.slice(0, HISTORY_N) }),
+			);
+		}
+		function addHistory(stats, entry){
+			COVER.hit('addHistory');
+			stats.history.unshift(entry);
+			stats.history = stats.history.slice(0, HISTORY_N);
+			saveStats(stats);
+		}
+
+		// -------------------------
+		// Audio (no external files)
+		// -------------------------
+		class Beeper {
+			//
+			// Tiny WebAudio wrapper.
+			//
+			// Audio is optional. Some browsers block AudioContext creation
+			// until a user gesture, and some environments disable audio
+			// entirely. All operations are guarded so the game still works.
+			//
+			constructor(){
+				this.ctx = null;
+				this.enabled = true;
+			}
+			setEnabled(v){ this.enabled = !!v; }
+			ensure(){
+				if (this.ctx) return true;
+				try {
+					const AC = window.AudioContext || window.webkitAudioContext;
+					if (!AC) return false;
+					this.ctx = new AC();
+					return true;
+				} catch {
+					this.ctx = null;
+					return false;
+				}
+			}
+			beep(freq, ms, type='sine', gain=0.05){
+				if (!this.enabled) return;
+				if (!this.ensure()) return;
+				const ctx = this.ctx;
+				if (!ctx) return;
+				try {
+					const osc = ctx.createOscillator();
+					const g = ctx.createGain();
+					osc.type = type;
+					osc.frequency.value = freq;
+					g.gain.value = 0;
+					osc.connect(g);
+					g.connect(ctx.destination);
+
+					const t0 = ctx.currentTime;
+					g.gain.setValueAtTime(0.0001, t0);
+					g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+					g.gain.exponentialRampToValueAtTime(
+						0.0001,
+						t0 + ms/1000,
+					);
+					osc.start(t0);
+					osc.stop(t0 + ms/1000 + 0.02);
+				} catch {
+					// Audio can fail in strict/blocked environments.
+				}
+			}
+			move(){ this.beep(520, 85, 'triangle', 0.05); }
+			invalid(){ this.beep(160, 120, 'sawtooth', 0.03); }
+			win(){
+				this.beep(784, 140, 'sine', 0.06);
+				setTimeout(
+					() => this.beep(988, 160, 'sine', 0.06),
+					110,
+				);
+			}
+			draw(){
+				this.beep(330, 150, 'square', 0.04);
+				setTimeout(
+					() => this.beep(262, 160, 'square', 0.04),
+					130,
+				);
+			}
+		}
+
+		// -------------------------
+		// UI + 3D + Physics
+		// -------------------------
+		//
+		// "el" is a central cache of DOM nodes.
+		// Many functions defensively check for missing nodes so the page
+		// still behaves gracefully if the DOM changes.
+		//
+		const el = {
+			appRoot: document.getElementById('appRoot'),
+			testRoot: document.getElementById('testRoot'),
+			boardKind: document.getElementById('boardKind'),
+			mode: document.getElementById('mode'),
+			youAre: document.getElementById('youAre'),
+			cpuSkill: document.getElementById('cpuSkill'),
+			newGame: document.getElementById('newGame'),
+			undo: document.getElementById('undo'),
+			resetStats: document.getElementById('resetStats'),
+			turn: document.getElementById('turn'),
+			state: document.getElementById('state'),
+			moves: document.getElementById('moves'),
+			status: document.getElementById('status'),
+			sound: document.getElementById('sound'),
+			timeOnGame: document.getElementById('timeOnGame'),
+			histN: document.getElementById('histN'),
+			historyBody: document.getElementById('historyBody'),
+			tabGame: document.getElementById('tabGame'),
+			tabDetails: document.getElementById('tabDetails'),
+			panelGame: document.getElementById('panelGame'),
+			panelDetails: document.getElementById('panelDetails'),
+			hudLine: document.getElementById('hudLine'),
+			hudSub: document.getElementById('hudSub'),
+			canvas: document.getElementById('c'),
+			trailLayer: document.getElementById('trailLayer'),
+			testResults: document.getElementById('testResults'),
+			coverageOut: document.getElementById('coverageOut'),
+		};
+
+		function setTab(which){
+			if (!el.tabGame || !el.tabDetails) return;
+			if (!el.panelGame || !el.panelDetails) return;
+			const isGame = which === 'game';
+			el.tabGame.setAttribute('aria-selected', isGame ? 'true' : 'false');
+			el.tabDetails.setAttribute(
+				'aria-selected',
+				isGame ? 'false' : 'true',
+			);
+			el.tabGame.tabIndex = isGame ? 0 : -1;
+			el.tabDetails.tabIndex = isGame ? -1 : 0;
+			el.panelGame.hidden = !isGame;
+			el.panelDetails.hidden = isGame;
+		}
+
+		function pill(w){
+			if (w === X) return '<span class="pill x">X</span>';
+			if (w === O) return '<span class="pill o">O</span>';
+			return '<span class="pill d">Draw</span>';
+		}
+
+		function renderHistory(stats){
+			if (!el.histN || !el.historyBody) return;
+			el.histN.textContent = String(HISTORY_N);
+			const rows = stats.history;
+			if (!rows.length){
+				el.historyBody.innerHTML =
+					'<tr><td colspan="4" class="small">' +
+					'No completed games yet.</td></tr>';
+				return;
+			}
+			el.historyBody.innerHTML = rows.map(r => {
+				const when = new Date(r.endedAt).toLocaleString();
+				const w = r.winner ?? 'draw';
+				const wCell = (w === 'draw') ? pill(null) : pill(w);
+				return `<tr>
+					<td>${when}</td>
+					<td>${wCell}</td>
+					<td><code>${r.moves}</code></td>
+					<td><code>${formatSeconds(r.durationSec)}</code></td>
+				</tr>`;
+			}).join('');
+		}
+
+		class AppState {
+			//
+			// Single source of truth for the current game.
+			//
+			// - boardKind: '2d' | '3d'
+			// - board: the current board array
+			// - moveStack: used for Undo (stores previous states)
+			// - turn: whose move is next ('X' or 'O')
+			// - eval: cached evaluation result for UI rendering
+			//
+			constructor(){
+				COVER.hit('AppState.ctor');
+				this.boardKind = '2d';
+				this.board = Array(9).fill(EMPTY);
+				this.moveStack = [];
+				this.turn = X;
+				this.moves = 0;
+				this.eval = evaluateBoard(this.board, this.boardKind);
+				this.startedAtMs = nowMs();
+				this.mode = 'pvp';
+				this.youAre = X;
+				this.cpuSkill = 'hard';
+			}
+			reset(){
+				COVER.hit('AppState.reset');
+				this.board = Array(
+					this.boardKind === '3d' ? 27 : 9,
+				).fill(EMPTY);
+				this.moveStack = [];
+				this.turn = X;
+				this.moves = 0;
+				this.eval = evaluateBoard(this.board, this.boardKind);
+				this.startedAtMs = nowMs();
+			}
+			isCpuTurn(){
+				COVER.hit('AppState.isCpuTurn');
+				if (this.mode !== 'cpu') return false;
+				const cpuPlayer = other(this.youAre);
+				return this.turn === cpuPlayer;
+			}
+		}
+
+		// 3D mappings
+		//
+		// These constants map between logical board cells and world space.
+		// If you change geometry sizes in Scene3D, keep these in sync.
+		//
+		const CELL_SIZE = 1.9;
+		const BOARD_CENTER_Y = 0.0;
+		const BOARD_HALF_Y = 0.175; // must match visual board thickness (0.35)
+		const BOARD_TOP_Y = BOARD_CENTER_Y + BOARD_HALF_Y;
+		const PIECE_EPS = 0.01;
+		const LAYER_GAP = 2.6;
+
+		// Collision filtering (Cannon)
+		//
+		// We separate collision groups so pieces only collide with the
+		// relevant board layer and boundary "walls".
+		//
+		const GROUP_PIECE = 1;
+		const GROUP_BOARD_1 = 2;
+		const GROUP_BOARD_2 = 4;
+		const GROUP_BOARD_3 = 8;
+		const GROUP_WALLS = 16;
+		function boardGroupForLayer(layer){
+			if (layer === 1) return GROUP_BOARD_1;
+			if (layer === 2) return GROUP_BOARD_2;
+			return GROUP_BOARD_3;
+		}
+		function layerCenterY(layer){
+			return BOARD_CENTER_Y + (layer - 1) * LAYER_GAP;
+		}
+		function layerTopY(layer){
+			return layerCenterY(layer) + BOARD_HALF_Y;
+		}
+		function pieceRestY(type){
+			// Ensure solid separation between piece and board.
+			// O is modeled as spheres with radius 0.17; X token thickness
+			// is 0.22.
+			if (type === O) return 0.17 + PIECE_EPS;
+			return 0.11 + PIECE_EPS;
+		}
+		function cellToWorld2D(idx){
+			const row = Math.floor(idx/3);
+			const col = idx % 3;
+			const x = (col - 1) * CELL_SIZE;
+			const z = (row - 1) * CELL_SIZE;
+			return { x, y: layerTopY(1), z, layer: 1 };
+		}
+		function cellToWorld3D(idx){
+			const layer = Math.floor(idx / 9);
+			const inLayer = idx % 9;
+			const row = Math.floor(inLayer / 3);
+			const col = inLayer % 3;
+			const x = (col - 1) * CELL_SIZE;
+			const z = (row - 1) * CELL_SIZE;
+			return { x, y: layerTopY(layer + 1), z, layer: layer + 1 };
+		}
+
+		function cellBounds2D(idx){
+			const p = cellToWorld2D(idx);
+			return {
+				x0: p.x - CELL_SIZE/2,
+				x1: p.x + CELL_SIZE/2,
+				z0: p.z - CELL_SIZE/2,
+				z1: p.z + CELL_SIZE/2,
+			};
+		}
+
+		// Three + Cannon scene
+		class Scene3D {
+			//
+			// Scene3D ties together:
+			// - Three.js: rendering + picking (raycasting)
+			// - cannon-es: rigid body physics for pieces and board
+			//
+			// The app uses this scene as a visualization layer.
+			// Game rules still come from the pure logic section.
+			//
+			constructor(canvas){
+				if (!canvas){
+					throw new Error('Canvas missing');
+				}
+				if (!THREE || !CANNON){
+					throw new Error('3D libraries not available');
+				}
+				this.canvas = canvas;
+				try {
+					this.renderer = new THREE.WebGLRenderer({
+						canvas,
+						antialias: true,
+						alpha: true,
+					});
+				} catch (e){
+					const msg = e?.message || String(e);
+					throw new Error('WebGL init failed: ' + msg);
+				}
+				this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+				this.scene = new THREE.Scene();
+				this.scene.fog = new THREE.Fog(0x0b1220, 14, 42);
+				this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+				this.camera.position.set(0, 8.8, 10.4);
+				this.camera.lookAt(0, 0, 0);
+
+				this.controls = new OrbitControls(
+					this.camera,
+					this.renderer.domElement,
+				);
+				this.controls.enableDamping = true;
+				this.controls.enablePan = false;
+				this.controls.minDistance = 9;
+				this.controls.maxDistance = 18;
+				this.controls.maxPolarAngle = Math.PI/2.05;
+				this.controls.target.set(0, 0, 0);
+				this.controls.update();
+
+				this.world = new CANNON.World({
+					gravity: new CANNON.Vec3(0, -9.82, 0),
+				});
+				this.world.broadphase = new CANNON.SAPBroadphase(this.world);
+				this.world.allowSleep = true;
+
+				this.matBoard = new CANNON.Material('board');
+				this.matPiece = new CANNON.Material('piece');
+				this.matGraffiti = new CANNON.Material('graffiti');
+				this.world.addContactMaterial(
+					new CANNON.ContactMaterial(this.matBoard, this.matPiece, {
+						friction: 0.35,
+						restitution: 0.55,
+					}),
+				);
+				this.world.addContactMaterial(
+					new CANNON.ContactMaterial(
+						this.matBoard,
+						this.matGraffiti,
+						{
+						friction: 0.22,
+						restitution: 0.35,
+						},
+					),
+				);
+				this.world.addContactMaterial(
+					new CANNON.ContactMaterial(this.matPiece, this.matPiece, {
+						friction: 0.2,
+						restitution: 0.65,
+					}),
+				);
+
+				this.pieces = [];
+				// { mesh, body, type, idx, target, mass0, settledMs, frozen,
+				//   winBounce, nextBounceAtMs }
+				this.graffiti = []; // { mesh, body, bornMs }
+				this.sparks = []; // { mesh, bornMs }
+				this.boardBodies = [];
+				this.platformBody = null;
+				this.boardMeshes = [];
+				this.pickBoards = [];
+				this.boardKind = '2d';
+				this.raycaster = new THREE.Raycaster();
+				this.pointer = new THREE.Vector2();
+
+				this._buildLights();
+				this._buildBoard();
+				this._buildPlatform();
+				this._resize();
+				window.addEventListener('resize', () => this._resize());
+			}
+
+			_buildLights(){
+				const hemi = new THREE.HemisphereLight(0xffffff, 0x95b0ff, 0.8);
+				hemi.position.set(0, 10, 0);
+				this.scene.add(hemi);
+
+				const dir = new THREE.DirectionalLight(0xffffff, 0.95);
+				dir.position.set(7, 12, 7);
+				dir.castShadow = true;
+				this.scene.add(dir);
+
+				const fill = new THREE.DirectionalLight(0xffc9f0, 0.35);
+				fill.position.set(-8, 4, -6);
+				this.scene.add(fill);
+			}
+
+			_buildPlatform(){
+				// Keep physics-only (no visible base cylinder).
+				const shape = new CANNON.Cylinder(7.4, 7.4, 0.6, 24);
+				const body = new CANNON.Body({
+					mass: 0,
+					material: this.matBoard,
+					shape,
+					position: new CANNON.Vec3(0, -0.35, 0),
+				});
+				body.collisionFilterGroup = GROUP_WALLS;
+				body.collisionFilterMask = GROUP_PIECE;
+				this.world.addBody(body);
+				this.platformBody = body;
+			}
+
+			setBoardKind(kind){
+				const next = kind === '3d' ? '3d' : '2d';
+				if (next === this.boardKind) return;
+				this.boardKind = next;
+				// Keep the 3-board stack comfortably inside the view when
+				// rotating.
+				this.controls.target.set(
+					0,
+					this.boardKind === '3d' ? 1.05 : 0,
+					0,
+				);
+				this.controls.update();
+				this._clearBoardStatics();
+				this._buildBoard();
+			}
+
+			_clearBoardStatics(){
+				for (const m of this.boardMeshes) this.scene.remove(m);
+				this.boardMeshes = [];
+				this.pickBoards = [];
+				for (const b of this.boardBodies) this.world.removeBody(b);
+				this.boardBodies = [];
+			}
+
+			_makeBoardTexture(layer){
+				const c = document.createElement('canvas');
+				c.width = 256;
+				c.height = 256;
+				const g = c.getContext('2d');
+				if (!g) return null;
+				const l = layer ?? 1;
+				// Cream/brown marble palette, slightly different per layer.
+				const top = l === 1 ? 'rgb(255, 247, 236)'
+					: (l === 2 ? 'rgb(251, 241, 227)' : 'rgb(246, 234, 216)');
+				const bot = l === 1 ? 'rgb(205, 165, 118)'
+					: (l === 2 ? 'rgb(186, 145, 98)' : 'rgb(166, 126, 82)');
+				const grad = g.createLinearGradient(0, 0, 256, 256);
+				grad.addColorStop(0, top);
+				grad.addColorStop(1, bot);
+				g.fillStyle = grad;
+				g.fillRect(0, 0, 256, 256);
+				// Speckle for a subtle "ceramic" look.
+				g.fillStyle = 'rgba(60, 40, 22, 0.10)';
+				for (let i = 0; i < 1400; i++){
+					const x = Math.random() * 256;
+					const y = Math.random() * 256;
+					const r = Math.random() * 1.4;
+					g.beginPath();
+					g.arc(x, y, r, 0, Math.PI * 2);
+					g.fill();
+				}
+				// Very subtle veins.
+				g.strokeStyle = 'rgba(120, 85, 55, 0.16)';
+				g.lineWidth = 1;
+				for (let i = 0; i < 10; i++){
+					let x = Math.random() * 256;
+					let y = Math.random() * 256;
+					g.beginPath();
+					g.moveTo(x, y);
+					const segs = 10 + Math.floor(Math.random() * 12);
+					for (let s = 0; s < segs; s++){
+						x += (Math.random() - 0.35) * 18;
+						y += (Math.random() - 0.50) * 18;
+						g.lineTo(x, y);
+					}
+					g.stroke();
+				}
+				// A faint edge vignette.
+				g.strokeStyle = 'rgba(60, 40, 22, 0.22)';
+				g.lineWidth = 6;
+				g.strokeRect(8, 8, 240, 240);
+				const tex = new THREE.CanvasTexture(c);
+				tex.anisotropy =
+					this.renderer.capabilities.getMaxAnisotropy?.() ?? 1;
+				tex.wrapS = THREE.ClampToEdgeWrapping;
+				tex.wrapT = THREE.ClampToEdgeWrapping;
+				tex.needsUpdate = true;
+				return tex;
+			}
+
+			_buildBoard(){
+				//
+				// Builds the visible board meshes AND the matching physics
+				// bodies.
+				//
+				// For 3D we create 3 stacked layers; for 2D we create 1.
+				//
+				const layers = this.boardKind === '3d' ? 3 : 1;
+				const boardGeo = new THREE.BoxGeometry(6.2, 0.35, 6.2);
+				const boardMats = [1,2,3].map(l => {
+					const boardTex = this._makeBoardTexture(l);
+					const m = new THREE.MeshStandardMaterial({
+						color: 0xffffff,
+						metalness: 0.10,
+						roughness: 0.38,
+						map: boardTex ?? undefined,
+					});
+					if (m.map){
+						m.map.colorSpace = THREE.SRGBColorSpace;
+					}
+					return m;
+				});
+				const lineMat = new THREE.MeshStandardMaterial({
+					color: 0x3c2816,
+					metalness: 0.1,
+					roughness: 0.35,
+				});
+				const lineGeoA = new THREE.BoxGeometry(0.14, 0.08, 5.7);
+				const lineGeoB = new THREE.BoxGeometry(5.7, 0.08, 0.14);
+
+				for (let layer = 1; layer <= layers; layer++){
+					const cy = layerCenterY(layer);
+					const ty = layerTopY(layer);
+					const group = boardGroupForLayer(layer);
+					const board = new THREE.Mesh(
+						boardGeo,
+						boardMats[Math.min(3, layer) - 1],
+					);
+					board.position.set(0, cy, 0);
+					board.userData.layer = layer;
+					board.castShadow = true;
+					board.receiveShadow = true;
+					this.scene.add(board);
+					this.boardMeshes.push(board);
+					this.pickBoards.push(board);
+
+					for (const x of [-CELL_SIZE/2, CELL_SIZE/2]){
+						const m = new THREE.Mesh(lineGeoA, lineMat);
+						m.position.set(x, ty + 0.05, 0);
+						m.castShadow = true;
+						this.scene.add(m);
+						this.boardMeshes.push(m);
+					}
+					for (const z of [-CELL_SIZE/2, CELL_SIZE/2]){
+						const m = new THREE.Mesh(lineGeoB, lineMat);
+						m.position.set(0, ty + 0.05, z);
+						m.castShadow = true;
+						this.scene.add(m);
+						this.boardMeshes.push(m);
+					}
+
+					const shape = new CANNON.Box(
+						new CANNON.Vec3(3.1, BOARD_HALF_Y, 3.1),
+					);
+					const body = new CANNON.Body({
+						mass: 0,
+						material: this.matBoard,
+					});
+					body.addShape(shape);
+					body.position.set(0, cy, 0);
+					body.collisionFilterGroup = group;
+					body.collisionFilterMask = GROUP_PIECE;
+					this.world.addBody(body);
+					this.boardBodies.push(body);
+
+					const wallH = 0.35;
+					const halfH = wallH / 2;
+					const thickness = 0.06;
+					const halfTh = thickness / 2;
+					const span = 2.95;
+					const y = ty + halfH;
+					const vShape = new CANNON.Box(
+						new CANNON.Vec3(halfTh, halfH, span),
+					);
+					for (const x of [-CELL_SIZE/2, CELL_SIZE/2]){
+						const b = new CANNON.Body({
+							mass: 0,
+							material: this.matBoard,
+						});
+						b.addShape(vShape);
+						b.position.set(x, y, 0);
+						b.collisionFilterGroup = group;
+						b.collisionFilterMask = GROUP_PIECE;
+						this.world.addBody(b);
+						this.boardBodies.push(b);
+					}
+					const hShape = new CANNON.Box(
+						new CANNON.Vec3(span, halfH, halfTh),
+					);
+					for (const z of [-CELL_SIZE/2, CELL_SIZE/2]){
+						const b = new CANNON.Body({
+							mass: 0,
+							material: this.matBoard,
+						});
+						b.addShape(hShape);
+						b.position.set(0, y, z);
+						b.collisionFilterGroup = group;
+						b.collisionFilterMask = GROUP_PIECE;
+						this.world.addBody(b);
+						this.boardBodies.push(b);
+					}
+				}
+
+				const wallThickness = 0.35;
+				const wallHeight = layers === 3 ? (LAYER_GAP * 2 + 1.6) : 1.2;
+				const baseY = layerTopY(1);
+				const walls = [
+					{ x: 0, z: 3.35, sx: 3.35, sz: wallThickness },
+					{ x: 0, z: -3.35, sx: 3.35, sz: wallThickness },
+					{ x: 3.35, z: 0, sx: wallThickness, sz: 3.35 },
+					{ x: -3.35, z: 0, sx: wallThickness, sz: 3.35 },
+				];
+				for (const w of walls){
+					const sh = new CANNON.Box(
+						new CANNON.Vec3(w.sx, wallHeight / 2, w.sz),
+					);
+					const b = new CANNON.Body({
+						mass: 0,
+						material: this.matBoard,
+					});
+					b.addShape(sh);
+					b.position.set(w.x, baseY + wallHeight / 2, w.z);
+					b.collisionFilterGroup = GROUP_WALLS;
+					b.collisionFilterMask = GROUP_PIECE;
+					this.world.addBody(b);
+					this.boardBodies.push(b);
+				}
+			}
+
+			_resize(){
+				let rect;
+				try {
+					const wrap = this.canvas.parentElement;
+					rect = wrap ? wrap.getBoundingClientRect() : null;
+				} catch {
+					rect = null;
+				}
+				const cw = this.canvas.clientWidth || 0;
+				const ch = this.canvas.clientHeight || 0;
+				const rw = rect ? rect.width : 0;
+				const rh = rect ? rect.height : 0;
+				const w = Math.max(1, Math.floor(rw || cw || innerWidth || 1));
+				const h = Math.max(1, Math.floor(rh || ch || innerHeight || 1));
+				this.camera.aspect = w / h;
+				this.camera.updateProjectionMatrix();
+				this.renderer.setSize(w, h, false);
+			}
+
+			clearPieces(){
+				for (const p of this.pieces){
+					this.scene.remove(p.mesh);
+					this.world.removeBody(p.body);
+				}
+				this.pieces = [];
+			}
+
+			bounceWinLine(line){
+				if (!Array.isArray(line) || line.length !== 3) return;
+				const t0 = nowMs();
+				for (const idx of line){
+					const p = this.pieces.find(pp => pp.idx === idx);
+					if (!p) continue;
+					p.winBounce = true;
+					p.nextBounceAtMs = 0;
+					p.frozen = false;
+					p.settledMs = 0;
+					p.body.type = CANNON.Body.DYNAMIC;
+					p.body.mass = p.mass0;
+					p.body.updateMassProperties();
+					p.body.wakeUp();
+					// Bounce in place: constrain to vertical motion only.
+					p.body.linearFactor = new CANNON.Vec3(0, 1, 0);
+					p.body.angularFactor = new CANNON.Vec3(0, 0, 0);
+					p.body.velocity.set(0, 0, 0);
+					p.body.angularVelocity.set(0, 0, 0);
+					p.body.position.x = p.target.x;
+					p.body.position.z = p.target.z;
+					p.body.position.y = p.target.y;
+					// Initial hop.
+					p.body.applyImpulse(
+						new CANNON.Vec3(0, p.mass0 * 4.2, 0),
+						p.body.position,
+					);
+				}
+			}
+
+			clearSparks(){
+				for (const s of this.sparks) this.scene.remove(s.mesh);
+				this.sparks = [];
+			}
+
+			popLastPiece(){
+				const p = this.pieces.pop();
+				if (!p) return false;
+				this.scene.remove(p.mesh);
+				this.world.removeBody(p.body);
+				return true;
+			}
+
+			clearGraffiti(){
+				for (const g of this.graffiti){
+					this.scene.remove(g.mesh);
+					this.world.removeBody(g.body);
+				}
+				this.graffiti = [];
+			}
+
+			makeXMesh(){
+				// Flat token-style X (matches gameplay cell mapping better)
+				const group = new THREE.Group();
+				const mat = new THREE.MeshStandardMaterial({
+					color: 0x2b9cff,
+					metalness: 0.25,
+					roughness: 0.35,
+				});
+				const geo = new THREE.BoxGeometry(1.55, 0.22, 0.32);
+				const a = new THREE.Mesh(geo, mat);
+				const b = new THREE.Mesh(geo, mat);
+				a.rotation.y = Math.PI/4;
+				b.rotation.y = -Math.PI/4;
+				a.castShadow = true;
+				b.castShadow = true;
+				group.add(a,b);
+				return group;
+			}
+
+			makeOMesh(){
+				const mat = new THREE.MeshStandardMaterial({
+					color: 0xff5aa5,
+					metalness: 0.18,
+					roughness: 0.35,
+				});
+				const geo = new THREE.TorusGeometry(0.65, 0.17, 16, 42);
+				// Bake the "flat on board" orientation into geometry so
+				// identity quaternion stays flat.
+				geo.rotateX(Math.PI/2);
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.castShadow = true;
+				return mesh;
+			}
+
+			makePieceBody(type, targetLayer, allowPieceCollisions){
+				// Physics shapes tuned to keep pieces readable + stable within
+				// a cell.
+				// O uses a compound ring of spheres; X uses two crossed flat
+				// boxes.
+				const layer = targetLayer ?? 1;
+				const boardGroup = boardGroupForLayer(layer);
+				const allowPieces =
+					(allowPieceCollisions ?? true) ? GROUP_PIECE : 0;
+				const mask = allowPieces | GROUP_WALLS | boardGroup;
+				if (type === X){
+					const body = new CANNON.Body({
+						mass: 1.05,
+						material: this.matPiece,
+						linearDamping: 0.34,
+						angularDamping: 0.55,
+					});
+					body.collisionFilterGroup = GROUP_PIECE;
+					body.collisionFilterMask = mask;
+					// Keep tokens flat; allow yaw only.
+					body.angularFactor = new CANNON.Vec3(0, 1, 0);
+					const half = new CANNON.Vec3(0.775, 0.11, 0.16);
+					const sh = new CANNON.Box(half);
+					const qA = new CANNON.Quaternion();
+					qA.setFromAxisAngle(new CANNON.Vec3(0,1,0), Math.PI/4);
+					const qB = new CANNON.Quaternion();
+					qB.setFromAxisAngle(new CANNON.Vec3(0,1,0), -Math.PI/4);
+					body.addShape(sh, new CANNON.Vec3(0,0,0), qA);
+					body.addShape(sh, new CANNON.Vec3(0,0,0), qB);
+					return body;
+				}
+				// O: sphere ring approximation
+				const body = new CANNON.Body({
+					mass: 0.95,
+					material: this.matPiece,
+					linearDamping: 0.32,
+					angularDamping: 0.58,
+				});
+				body.collisionFilterGroup = GROUP_PIECE;
+				body.collisionFilterMask = mask;
+				// Keep ring flat; allow yaw only.
+				body.angularFactor = new CANNON.Vec3(0, 1, 0);
+				const ringR = 0.66;
+				const tubeR = 0.17;
+				for (let i=0;i<10;i++){
+					const ang = (i/10) * Math.PI * 2;
+					const x = Math.cos(ang) * ringR;
+					const z = Math.sin(ang) * ringR;
+					body.addShape(
+						new CANNON.Sphere(tubeR),
+						new CANNON.Vec3(x, 0, z),
+					);
+				}
+				return body;
+			}
+
+			spawnPiece(type, idx){
+				const pos = this.boardKind === '3d'
+					? cellToWorld3D(idx)
+					: cellToWorld2D(idx);
+				const mesh = (type === X) ? this.makeXMesh() : this.makeOMesh();
+				const yaw = Math.random() * Math.PI * 2;
+				mesh.position.set(pos.x, pos.y + 6.0, pos.z);
+				mesh.rotation.y = yaw;
+				this.scene.add(mesh);
+
+				const body = this.makePieceBody(
+					type,
+					pos.layer,
+					this.boardKind !== '3d',
+				);
+				body.position.set(pos.x, pos.y + 6.0, pos.z);
+				// Keep sideways velocity low so pieces land in the selected
+				// cell.
+				body.velocity.set(0, 0, 0);
+				body.angularVelocity.set(0, (Math.random()-0.5)*2.2, 0);
+				// Start perfectly flat; allow only yaw rotation.
+				body.quaternion.setFromEuler(0, yaw, 0);
+				body.sleepSpeedLimit = 0.15;
+				body.sleepTimeLimit = 0.8;
+				this.world.addBody(body);
+				this.pieces.push({
+					mesh,
+					body,
+					type,
+					idx,
+					target: new CANNON.Vec3(
+						pos.x,
+						pos.y + pieceRestY(type),
+						pos.z,
+					),
+					mass0: body.mass,
+					yaw,
+					settledMs: 0,
+					frozen: false,
+					winBounce: false,
+					nextBounceAtMs: 0,
+				});
+			}
+
+			spawnGraffitiBurst(colorHex){
+				const born = nowMs();
+				const count = 45;
+				for (let i=0;i<count;i++){
+					const size = 0.12 + Math.random()*0.15;
+					const geo = new THREE.PlaneGeometry(size, size);
+					const mat = new THREE.MeshStandardMaterial({
+						color: colorHex,
+						metalness: 0.02,
+						roughness: 0.55,
+						side: THREE.DoubleSide,
+						transparent: true,
+						opacity: 0.95
+					});
+					const mesh = new THREE.Mesh(geo, mat);
+					mesh.castShadow = true;
+					mesh.position.set(
+						(Math.random() - 0.5) * 3.4,
+						3.8 + Math.random() * 1.4,
+						(Math.random() - 0.5) * 3.4,
+					);
+					mesh.rotation.set(
+						Math.random() * Math.PI,
+						Math.random() * Math.PI,
+						Math.random() * Math.PI,
+					);
+					this.scene.add(mesh);
+
+					const body = new CANNON.Body({
+						mass: 0.06,
+						material: this.matGraffiti,
+						linearDamping: 0.07,
+						angularDamping: 0.12,
+					});
+					body.addShape(
+						new CANNON.Box(
+							new CANNON.Vec3(size / 2, size / 2, 0.02),
+						),
+					);
+					body.position.set(
+						mesh.position.x,
+						mesh.position.y,
+						mesh.position.z,
+					);
+					body.velocity.set(
+						(Math.random() - 0.5) * 3.8,
+						Math.random() * 2.8 + 1.5,
+						(Math.random() - 0.5) * 3.8,
+					);
+					body.angularVelocity.set(
+						(Math.random() - 0.5) * 10,
+						(Math.random() - 0.5) * 10,
+						(Math.random() - 0.5) * 10,
+					);
+					this.world.addBody(body);
+
+					this.graffiti.push({ mesh, body, bornMs: born });
+				}
+			}
+
+			spawnSpark(idx){
+				const pos = this.boardKind === '3d'
+					? cellToWorld3D(idx)
+					: cellToWorld2D(idx);
+				const born = nowMs();
+				const geo = new THREE.RingGeometry(0.12, 0.62, 28);
+				const mat = new THREE.MeshBasicMaterial({
+					color: 0xfff3c4,
+					transparent: true,
+					opacity: 0.95,
+					side: THREE.DoubleSide,
+				});
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.set(pos.x, pos.y + 0.03, pos.z);
+				mesh.rotation.x = Math.PI / 2;
+				this.scene.add(mesh);
+				this.sparks.push({ mesh, bornMs: born });
+			}
+
+			step(dt){
+				// Cap dt for stability
+				const step = 1/60;
+				const maxSubsteps = 3;
+				this.world.step(step, dt, maxSubsteps);
+
+				const t = nowMs();
+				// Gentle lateral "magnet" to the cell center so physics
+				// matches gameplay.
+				for (const p of this.pieces){
+					const bouncing = !!p.winBounce;
+					if (bouncing){
+						// Keep it perfectly in-place while it bounces
+						// vertically.
+						p.body.position.x = p.target.x;
+						p.body.position.z = p.target.z;
+						p.body.velocity.x = 0;
+						p.body.velocity.z = 0;
+						p.body.angularVelocity.set(0, 0, 0);
+						// Keep above the board.
+						if (p.body.position.y < p.target.y){
+							p.body.position.y = p.target.y;
+							if (p.body.velocity.y < 0) p.body.velocity.y = 0;
+						}
+						// Re-hop whenever it comes back down.
+							const nearFloor =
+								p.body.position.y <= (p.target.y + 0.05);
+						if (
+							nearFloor &&
+							p.body.velocity.y <= 0.15 &&
+							t >= (p.nextBounceAtMs || 0)
+						){
+							p.body.velocity.y = 0;
+							p.body.applyImpulse(
+								new CANNON.Vec3(0, p.mass0 * 4.0, 0),
+								p.body.position,
+							);
+							p.nextBounceAtMs = t + 260;
+						}
+					} else if (!p.frozen){
+						const dx = p.target.x - p.body.position.x;
+						const dz = p.target.z - p.body.position.z;
+						// Only assist after approaching the board.
+						if (p.body.position.y < 2.2){
+							const k = 42; // spring
+							const d = 7;  // damping
+							let fx = dx * k - p.body.velocity.x * d;
+							let fz = dz * k - p.body.velocity.z * d;
+							const maxF = 22;
+							fx = clamp(fx, -maxF, maxF);
+							fz = clamp(fz, -maxF, maxF);
+							p.body.applyForce(
+								new CANNON.Vec3(fx, 0, fz),
+								p.body.position,
+							);
+							// Prevent extreme sideways skating.
+							p.body.velocity.x = clamp(
+								p.body.velocity.x,
+								-1.1,
+								1.1,
+							);
+							p.body.velocity.z = clamp(
+								p.body.velocity.z,
+								-1.1,
+								1.1,
+							);
+						}
+
+						const dist2 = dx*dx + dz*dz;
+						const v = p.body.velocity.length();
+						const w = p.body.angularVelocity.length();
+						const nearCenter = dist2 < (0.09*0.09);
+						const lowMotion =
+							v < 0.28 &&
+							w < 0.85 &&
+							p.body.position.y < (BOARD_TOP_Y + 0.75);
+						if (nearCenter && lowMotion) p.settledMs += dt * 1000;
+						else p.settledMs = 0;
+
+						if (p.settledMs > 280){
+							// Snap & freeze in the chosen cell.
+							p.body.velocity.set(0, 0, 0);
+							p.body.angularVelocity.set(0, 0, 0);
+							p.body.position.x = p.target.x;
+							p.body.position.z = p.target.z;
+							p.body.position.y = p.target.y;
+							if (p.type === O){
+								p.body.quaternion.set(0, 0, 0, 1);
+							} else {
+								p.body.quaternion.setFromEuler(0, p.yaw, 0);
+							}
+							p.body.type = CANNON.Body.STATIC;
+							p.body.mass = 0;
+							p.body.updateMassProperties();
+							p.frozen = true;
+						}
+					}
+					// winBounce persists until a new game clears pieces.
+
+					p.mesh.position.set(
+						p.body.position.x,
+						p.body.position.y,
+						p.body.position.z,
+					);
+					p.mesh.quaternion.set(
+						p.body.quaternion.x,
+						p.body.quaternion.y,
+						p.body.quaternion.z,
+						p.body.quaternion.w,
+					);
+				}
+				for (let i = this.sparks.length - 1; i >= 0; i--){
+					const s = this.sparks[i];
+					const age = (t - s.bornMs) / 1000;
+					const k = clamp(age / 0.22, 0, 1);
+					s.mesh.scale.setScalar(1.0 + k * 1.35);
+					s.mesh.material.opacity = 0.95 * (1.0 - k);
+					if (age > 0.24){
+						this.scene.remove(s.mesh);
+						this.sparks.splice(i, 1);
+					}
+				}
+				for (let i=this.graffiti.length-1;i>=0;i--){
+					const g = this.graffiti[i];
+					g.mesh.position.set(
+						g.body.position.x,
+						g.body.position.y,
+						g.body.position.z,
+					);
+					g.mesh.quaternion.set(
+						g.body.quaternion.x,
+						g.body.quaternion.y,
+						g.body.quaternion.z,
+						g.body.quaternion.w,
+					);
+					const age = (t - g.bornMs)/1000;
+					g.mesh.material.opacity = clamp(1.0 - age/4.0, 0, 0.95);
+					if (age > 4.2){
+						this.scene.remove(g.mesh);
+						this.world.removeBody(g.body);
+						this.graffiti.splice(i, 1);
+					}
+				}
+
+				this.controls.update();
+				this.renderer.render(this.scene, this.camera);
+			}
+
+			pickCellFromPointer(clientX, clientY){
+				let rect;
+				try {
+					rect = this.canvas.getBoundingClientRect();
+				} catch {
+					return null;
+				}
+				if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+				const x = (clientX - rect.left) / rect.width;
+				const y = (clientY - rect.top) / rect.height;
+				this.pointer.set(x*2-1, -(y*2-1));
+				this.raycaster.setFromCamera(this.pointer, this.camera);
+
+				const hits = this.raycaster.intersectObjects(
+					this.pickBoards,
+					false,
+				);
+				if (!hits.length) return null;
+				for (const h of hits){
+					const layer = h.object?.userData?.layer ?? 1;
+					if (h.point.y < layerTopY(layer) - 0.01) continue;
+					const col = Math.floor(
+						(h.point.x + 1.5 * CELL_SIZE) / CELL_SIZE,
+					);
+					const row = Math.floor(
+						(h.point.z + 1.5 * CELL_SIZE) / CELL_SIZE,
+					);
+					if (col < 0 || col > 2 || row < 0 || row > 2) continue;
+					const idx = row * 3 + col;
+					if (this.boardKind !== '3d') return idx;
+					return (layer - 1) * 9 + idx;
+				}
+				return null;
+			}
+		}
+
+		function computeUndoPlies(app){
+			if (app.eval.state !== 'playing') return 0;
+			if (!app.moveStack.length) return 0;
+			if (app.mode !== 'cpu') return 1;
+			// If it's the human's turn, CPU likely just responded:
+			// undo both moves.
+			if (app.turn === app.youAre){
+				return Math.min(2, app.moveStack.length);
+			}
+			// If it's CPU turn, human just moved: undo one move.
+			return 1;
+		}
+
+		function undoInApp(app, plies){
+			const n = Math.min(plies, app.moveStack.length);
+			if (n <= 0) return 0;
+			let board = app.board.slice();
+			for (let i = 0; i < n; i++){
+				const m = app.moveStack.pop();
+				if (!m) break;
+				board[m.idx] = EMPTY;
+				app.turn = m.player;
+				app.moves = Math.max(0, app.moves - 1);
+			}
+			app.board = board;
+			app.eval = evaluateBoard(app.board, app.boardKind);
+			return n;
+		}
+
+		function setStatus(html){
+			if (el.status) el.status.innerHTML = html;
+		}
+		function setHud(main, sub){
+			if (el.hudLine) el.hudLine.textContent = main;
+			if (el.hudSub) el.hudSub.textContent = sub;
+		}
+
+		function renderState(app){
+			if (!el.turn || !el.moves || !el.state) return;
+			el.turn.textContent = app.turn;
+			el.moves.textContent = String(app.moves);
+			if (app.eval.state === 'playing'){
+				el.state.textContent = 'Playing';
+			} else if (app.eval.state === 'draw'){
+				el.state.textContent = 'Draw';
+			} else {
+				el.state.textContent = `Winner: ${app.eval.winner}`;
+			}
+			if (app.eval.state === 'playing'){
+				if (app.mode === 'cpu'){
+					const you = app.youAre;
+					const who = (app.turn === you) ? 'Your turn' : 'CPU turn';
+					setStatus(
+						`<div><strong>${who}</strong> ` +
+						`(${app.turn})</div>`,
+					);
+					setHud(`${app.turn} to move`, '');
+				} else {
+					setStatus(
+						`<div><strong>${app.turn}</strong> to move</div>`,
+					);
+					setHud(`${app.turn} to move`, '');
+				}
+			} else if (app.eval.state === 'draw'){
+				setStatus(
+					'<div><strong>Draw</strong></div>',
+				);
+				setHud('Draw', '');
+			} else {
+				setStatus(
+					`<div><strong>${app.eval.winner}</strong> wins!</div>`,
+				);
+				setHud(`${app.eval.winner} wins!`, '');
+			}
+			if (el.undo){
+				el.undo.disabled = computeUndoPlies(app) === 0;
+			}
+		}
+
+		function endGameIfNeeded(app, stats, beeper, scene){
+			if (app.eval.state === 'playing') return;
+			const durationSec = (nowMs() - app.startedAtMs)/1000;
+			addHistory(stats, {
+				endedAt: Date.now(),
+				winner: app.eval.state === 'win' ? app.eval.winner : 'draw',
+				moves: app.moves,
+				durationSec,
+			});
+			renderHistory(stats);
+			if (app.eval.state === 'win'){
+				beeper.win();
+				if (scene && typeof scene.bounceWinLine === 'function'){
+					scene.bounceWinLine(app.eval.line);
+				}
+				if (scene && typeof scene.spawnGraffitiBurst === 'function'){
+					scene.spawnGraffitiBurst(
+						app.eval.winner === X ? 0x2b9cff : 0xff5aa5,
+					);
+				}
+			} else {
+				beeper.draw();
+				if (scene && typeof scene.spawnGraffitiBurst === 'function'){
+					scene.spawnGraffitiBurst(0x111827);
+				}
+			}
+		}
+
+		async function cpuMaybeMove(app, stats, beeper, scene){
+			if (!app.isCpuTurn()) return;
+			if (app.eval.state !== 'playing') return;
+			// tiny delay for feel
+			await new Promise(r => setTimeout(r, 320));
+			if (app.eval.state !== 'playing') return;
+			const cpuPlayer = other(app.youAre);
+			const idx = cpuPick(app.board, cpuPlayer, app.cpuSkill);
+			if (idx == null) return;
+			// Apply move
+			app.board = applyMove(app.board, idx, cpuPlayer);
+			app.moves += 1;
+			app.moveStack.push({ idx, player: cpuPlayer });
+			app.eval = evaluateBoard(app.board, app.boardKind);
+			if (scene && typeof scene.spawnPiece === 'function'){
+				scene.spawnPiece(cpuPlayer, idx);
+			}
+			beeper.move();
+			if (app.eval.state === 'playing') app.turn = other(app.turn);
+			renderState(app);
+			endGameIfNeeded(app, stats, beeper, scene);
+		}
+
+		function installTabHandlers(){
+			if (!el.tabGame || !el.tabDetails) return;
+			function onKey(e){
+				if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+				const current =
+					el.tabGame.getAttribute('aria-selected') === 'true'
+						? 'game'
+						: 'details';
+				setTab(current === 'game' ? 'details' : 'game');
+			}
+			el.tabGame.addEventListener('click', () => setTab('game'));
+			el.tabDetails.addEventListener('click', () => setTab('details'));
+			el.tabGame.addEventListener('keydown', onKey);
+			el.tabDetails.addEventListener('keydown', onKey);
+		}
+
+		function runApp(){
+			if (!el.appRoot) return;
+			if (!el.boardKind || !el.mode) {
+				setStatus(
+					'<div><strong>UI error</strong></div>' +
+					'<div class="small">Missing controls.</div>',
+				);
+				return;
+			}
+			if (!el.youAre || !el.cpuSkill || !el.sound) {
+				setStatus(
+					'<div><strong>UI error</strong></div>' +
+					'<div class="small">Missing controls.</div>',
+				);
+				return;
+			}
+			if (!el.canvas) {
+				setStatus(
+					'<div><strong>Render error</strong></div>' +
+					'<div class="small">Canvas missing.</div>',
+				);
+				return;
+			}
+			el.appRoot.style.display = '';
+			installTabHandlers();
+
+			const forcedKind = forcedBoardKindFromQuery();
+			if (forcedKind && el.boardKind){
+				el.boardKind.value = forcedKind;
+			}
+
+			const stats = loadStats();
+			renderHistory(stats);
+			const beeper = new Beeper();
+			beeper.setEnabled(el.sound.checked);
+			el.sound.addEventListener('change', () => {
+				beeper.setEnabled(el.sound.checked);
+			});
+
+			const app = new AppState();
+			app.boardKind = el.boardKind.value;
+			app.mode = el.mode.value;
+			app.youAre = el.youAre.value;
+			app.cpuSkill = el.cpuSkill.value;
+
+			const scene = new Scene3D(el.canvas);
+
+			function applySettingsFromUI(){
+				app.boardKind = el.boardKind.value;
+				app.mode = el.mode.value;
+				app.youAre = el.youAre.value;
+				app.cpuSkill = el.cpuSkill.value;
+				document.title = app.boardKind === '3d'
+					? '3D Tic Tac Toe'
+					: '2D Tic Tac Toe';
+				const h = document.querySelector('.h1');
+				if (h){
+					h.textContent = app.boardKind === '3d'
+						? '3D Tic Tac Toe'
+						: '2D Tic Tac Toe';
+				}
+			}
+
+			function syncSettings(){
+				applySettingsFromUI();
+				renderState(app);
+				cpuMaybeMove(app, stats, beeper, scene);
+			}
+			if (el.boardKind) el.boardKind.addEventListener('change', () => {
+				newGame();
+			});
+			if (el.mode) el.mode.addEventListener('change', syncSettings);
+			if (el.youAre) el.youAre.addEventListener('change', syncSettings);
+			if (el.cpuSkill){
+				el.cpuSkill.addEventListener('change', syncSettings);
+			}
+
+			function newGame(){
+				applySettingsFromUI();
+				app.reset();
+				if (scene && typeof scene.clearPieces === 'function'){
+					scene.clearPieces();
+				}
+				if (scene && typeof scene.clearGraffiti === 'function'){
+					scene.clearGraffiti();
+				}
+				if (scene && typeof scene.clearSparks === 'function'){
+					scene.clearSparks();
+				}
+				if (scene && typeof scene.setBoardKind === 'function'){
+					scene.setBoardKind(app.boardKind);
+				}
+				renderState(app);
+				cpuMaybeMove(app, stats, beeper, scene);
+			}
+
+			if (el.newGame) el.newGame.addEventListener('click', newGame);
+			if (el.resetStats) el.resetStats.addEventListener('click', () => {
+				storage.removeItem(STATS_KEY);
+				const s = loadStats();
+				renderHistory(s);
+			});
+
+			function tryHumanMove(idx){
+				if (app.eval.state !== 'playing') return;
+				if (idx == null) return;
+				if (app.mode === 'cpu' && app.turn !== app.youAre) return;
+				if (app.board[idx]){ beeper.invalid(); return; }
+				if (scene && typeof scene.spawnSpark === 'function'){
+					scene.spawnSpark(idx);
+				}
+				app.board = applyMove(app.board, idx, app.turn);
+				app.moves += 1;
+				app.moveStack.push({ idx, player: app.turn });
+				app.eval = evaluateBoard(app.board, app.boardKind);
+				if (scene && typeof scene.spawnPiece === 'function'){
+					scene.spawnPiece(app.turn, idx);
+				}
+				beeper.move();
+				if (app.eval.state === 'playing') app.turn = other(app.turn);
+				renderState(app);
+				endGameIfNeeded(app, stats, beeper, scene);
+				cpuMaybeMove(app, stats, beeper, scene);
+			}
+
+			function onUndo(){
+				const plies = computeUndoPlies(app);
+				if (plies === 0) return;
+				const undone = undoInApp(app, plies);
+				for (let i = 0; i < undone; i++){
+					if (scene && typeof scene.popLastPiece === 'function'){
+						scene.popLastPiece();
+					}
+				}
+				renderState(app);
+				cpuMaybeMove(app, stats, beeper, scene);
+			}
+			if (el.undo) el.undo.addEventListener('click', onUndo);
+
+			let down = null; // { id, x, y, dragged, pointerType }
+			const DRAG_PX = 6;
+			const activePointers = new Map(); // pointerId -> { pointerType }
+			let gestureHadMultiTouch = false;
+			let trailDots = []; // { el, bornMs }
+			let lastTrailAt = 0;
+			let lastTrailX = null;
+			let lastTrailY = null;
+			function addTrailDot(clientX, clientY){
+				if (!el.trailLayer) return;
+				const rect = el.canvas.getBoundingClientRect();
+				const x = clientX - rect.left;
+				const y = clientY - rect.top;
+				if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+				const dot = document.createElement('div');
+				dot.className = 'trailDot';
+				dot.style.left = `${x}px`;
+				dot.style.top = `${y}px`;
+				el.trailLayer.appendChild(dot);
+				trailDots.push({ el: dot, bornMs: nowMs() });
+				if (trailDots.length > 160){
+					const old = trailDots.shift();
+					try { old.el.remove(); } catch {}
+				}
+			}
+			el.canvas.addEventListener('pointerdown', (e) => {
+				// Let OrbitControls handle the actual movement; we only decide
+				// whether a gesture counts as a "tap" (place) or a drag/pinch.
+				activePointers.set(e.pointerId, { pointerType: e.pointerType });
+				if (activePointers.size > 1) gestureHadMultiTouch = true;
+				// Only track primary pointer for tap-to-place.
+				if (e.pointerType === 'touch' && !e.isPrimary) return;
+				// Mouse: left button only.
+				if (e.pointerType === 'mouse' && e.button !== 0) return;
+				beeper.ensure();
+				if (e.pointerType === 'touch') e.preventDefault();
+				down = {
+					id: e.pointerId,
+					x: e.clientX,
+					y: e.clientY,
+					dragged: false,
+					pointerType: e.pointerType,
+				};
+			});
+			el.canvas.addEventListener('pointermove', (e) => {
+				if (!down) return;
+				if (e.pointerId !== down.id) return;
+				const dx = e.clientX - down.x;
+				const dy = e.clientY - down.y;
+				if (dx*dx + dy*dy > DRAG_PX*DRAG_PX) down.dragged = true;
+				if (app.boardKind === '3d' && down.dragged){
+					const t = nowMs();
+					const mx = e.clientX;
+					const my = e.clientY;
+					const ddx = lastTrailX == null ? 999 : (mx - lastTrailX);
+					const ddy = lastTrailY == null ? 999 : (my - lastTrailY);
+					const dist2 = ddx*ddx + ddy*ddy;
+					if (t - lastTrailAt > 14 || dist2 > 18*18){
+						addTrailDot(mx, my);
+						lastTrailAt = t;
+						lastTrailX = mx;
+						lastTrailY = my;
+					}
+				}
+			});
+			el.canvas.addEventListener('pointerup', (e) => {
+				activePointers.delete(e.pointerId);
+				if (!down) {
+					if (activePointers.size === 0) gestureHadMultiTouch = false;
+					return;
+				}
+				if (e.pointerId !== down.id) {
+					if (activePointers.size === 0) gestureHadMultiTouch = false;
+					return;
+				}
+				const wasDragged = down.dragged;
+				const wasMultiTouch = gestureHadMultiTouch;
+				down = null;
+				lastTrailAt = 0;
+				lastTrailX = null;
+				lastTrailY = null;
+				if (activePointers.size === 0) gestureHadMultiTouch = false;
+				// Only place a piece on a clean single-pointer tap.
+				if (wasDragged || wasMultiTouch) return;
+				if (e.pointerType === 'mouse' && e.button !== 0) return;
+				if (e.pointerType === 'touch') e.preventDefault();
+				let idx = null;
+				if (scene && typeof scene.pickCellFromPointer === 'function'){
+					idx = scene.pickCellFromPointer(e.clientX, e.clientY);
+				}
+				tryHumanMove(idx);
+			});
+			el.canvas.addEventListener('pointercancel', (e) => {
+				activePointers.delete(e.pointerId);
+				if (down && e.pointerId === down.id) down = null;
+				if (activePointers.size === 0) gestureHadMultiTouch = false;
+			});
+
+			// Loop
+			let last = nowMs();
+			function loop(){
+				const t = nowMs();
+				const dt = Math.min(0.05, (t-last)/1000);
+				last = t;
+				if (scene && typeof scene.step === 'function'){
+					scene.step(dt);
+				}
+				for (let i = trailDots.length - 1; i >= 0; i--){
+					const d = trailDots[i];
+					const age = (t - d.bornMs) / 1000;
+					const k = clamp(age / 0.26, 0, 1);
+					d.el.style.opacity = String(1.0 - k);
+					const scale = 1.0 + k * 0.9;
+					d.el.style.transform =
+						`translate(-50%, -50%) scale(${scale})`;
+					if (age > 0.28){
+						try { d.el.remove(); } catch {}
+						trailDots.splice(i, 1);
+					}
+				}
+				if (el.timeOnGame){
+					el.timeOnGame.textContent = formatSeconds(
+						(t - app.startedAtMs) / 1000,
+					);
+				}
+				requestAnimationFrame(loop);
+			}
+
+			newGame();
+			loop();
+		}
+
+		// -------------------------
+		// Minimal unit-test framework
+		// -------------------------
+		//
+		// This is a tiny in-page test harness so the game logic can be
+		// validated without external tooling.
+		//
+		// Design goals:
+		// - Single-file: no build step, no npm.
+		// - Async-friendly: a test may await.
+		// - UI-friendly: results are rendered into the test panel.
+		//
+		function createTestRunner(){
+			const tests = [];
+			function test(nOrName, nameOrFn, maybeFn){
+				// Supports:
+				// - test(12, 'name', fn) for explicit numbering
+				// - test('name', fn) for implicit numbering
+				let n;
+				let name;
+				let fn;
+				if (typeof nOrName === 'number'){
+					n = nOrName;
+					name = nameOrFn;
+					fn = maybeFn;
+				} else {
+					n = tests.length + 1;
+					name = nOrName;
+					fn = nameOrFn;
+				}
+				tests.push({ n, name, fn });
+			}
+			function assert(cond, msg='Assertion failed'){
+				if (!cond) throw new Error(msg);
+			}
+			function eq(a, b, msg){
+				if (a !== b) throw new Error(msg ?? `Expected ${a} === ${b}`);
+			}
+			function deepEq(a, b, msg){
+				const ja = JSON.stringify(a);
+				const jb = JSON.stringify(b);
+				if (ja !== jb){
+					throw new Error(msg ?? `Expected deep equal\n${ja}\n${jb}`);
+				}
+			}
+			async function runAll(){
+				const results = [];
+				for (let i = 0; i < tests.length; i++){
+					const t = tests[i];
+					try {
+						await t.fn({ assert, eq, deepEq });
+						results.push({
+							n: t.n,
+							name: t.name,
+							ok: true,
+							err: null,
+						});
+					} catch (e){
+						results.push({
+							n: t.n,
+							name: t.name,
+							ok: false,
+							err: String(e?.stack || e?.message || e),
+						});
+					}
+				}
+				return results;
+			}
+			return { test, runAll };
+		}
+
+		function renderTestResults(results){
+			// Converts the results array into DOM rows.
+			function fmt(n){ return String(n).padStart(3, '0'); }
+			const pass = results.filter((r) => r.ok).length;
+			const fail = results.length - pass;
+			const header = document.createElement('div');
+			header.className = 'testRow';
+			header.innerHTML =
+				`<div style="flex:1 1 auto"><strong>Summary</strong></div>` +
+				`<div><span class="pass">${pass} passed</span>` +
+				` • <span class="${fail ? 'fail' : 'pass'}">` +
+				`${fail} failed</span></div>`;
+
+			const frag = document.createDocumentFragment();
+			frag.appendChild(header);
+			for (const r of results){
+				const row = document.createElement('div');
+				row.className = 'testRow';
+				row.innerHTML =
+					`<div style="flex:1 1 auto"><code>#${fmt(r.n)}. ` +
+					`${escapeHtml(r.name)}</code></div>` +
+					`<div class="${r.ok ? 'pass' : 'fail'}">` +
+					`${r.ok ? 'PASS' : 'FAIL'}</div>`;
+				if (!r.ok){
+					const pre = document.createElement('div');
+					pre.className = 'small';
+					pre.style.whiteSpace = 'pre-wrap';
+					pre.style.color = 'rgba(0,0,0,.72)';
+					pre.textContent = r.err;
+					row.appendChild(pre);
+				}
+				frag.appendChild(row);
+			}
+			el.testResults.innerHTML = '';
+			el.testResults.appendChild(frag);
+		}
+
+		function defineCoveragePoints(){
+			// Declare the IDs that the test run expects to see hit.
+			COVER.define([
+				'evaluateBoard',
+				'evaluateBoard.win',
+				'evaluateBoard.draw',
+				'evaluateBoard.playing',
+				'legalMoves',
+				'applyMove',
+				'applyMove.badIdx',
+				'applyMove.occupied',
+				'applyMove.ok',
+				'minimax',
+				'minimax.baseWin',
+				'minimax.baseDraw',
+				'cpuPick',
+				'cpuPick.easy',
+				'cpuPick.easy.center',
+				'cpuPick.easy.random',
+				'cpuPick.hard',
+				'loadStats',
+				'saveStats',
+				'addHistory',
+				'AppState.ctor',
+				'AppState.reset',
+				'AppState.isCpuTurn',
+			]);
+		}
+
+		function renderCoverage(){
+			// Show a simple coverage percentage in the test header area.
+			const r = COVER.report();
+			const pct = r.pct.toFixed(1);
+			el.coverageOut.textContent =
+				`Coverage: ${pct}% (${r.covered}/${r.total})`;
+		}
+
+		function runTests(){
+			//
+			// Entry point when testsMode is enabled.
+			// Wires the "Run Tests" button, registers tests, then runs them.
+			//
+			el.testRoot.style.display = '';
+			const runBtn = document.getElementById('runTests');
+			el.coverageOut.textContent = '';
+			el.testResults.innerHTML =
+				'<div class="small">Click Run Tests to start.</div>';
+
+			defineCoveragePoints();
+
+			runBtn.addEventListener('click', async () => {
+				runBtn.disabled = true;
+				runBtn.textContent = 'Running…';
+				COVER.reset();
+
+				const tr = createTestRunner();
+				const T = (n, name, fn) => tr.test(n, name, fn);
+
+            /*
+            Test Catalog (numbers shown in output)
+            
+            Core rules (2D)
+            - #001-#008: evaluateBoard(2d) detects each of the 8 win
+                lines,
+                returns correct winner + line.
+            - #009: evaluateBoard(2d) returns draw on full board.
+            - #010: evaluateBoard(2d) returns playing on a non-terminal
+                board.
+            - #011: evaluateBoard(2d) on invalid state returns the
+                first win
+                encountered (stable behavior).
+            
+            Core rules (3D)
+            - #012: idx3 maps coordinates to expected indices.
+            - #013: WIN_LINES_3D has expected count (49).
+            - #014-#016: WIN_LINES_3D indices are valid, lines are
+                unique,
+                and each line has 3 distinct cells.
+            - #017-#065: evaluateBoard(3d) detects a win for every
+                generated
+                3D win line (one test per line).
+            - #066: evaluateBoard(3d) returns playing on empty board.
+            - #067: evaluateBoard(3d) returns draw on a constructed
+                full board
+                with no winning line.
+            
+            Move mechanics
+            - #068-#072: applyMove rejects invalid indices (neg, OOB,
+                non-integer, NaN/null) and rejects occupied.
+            - #073: applyMove does not mutate the original board.
+            - #074-#076: legalMoves works for 2D and 3D and is empty
+                when full.
+            
+            CPU
+            - #077-#081: cpuPick (2D) easy/hard behaviors and returns
+                null on full.
+            - #082-#085: cpuPick (3D) win/block/center/random behaviors.
+            
+            Undo
+            - #086-#090: computeUndoPlies covers PvP/CPU branches and
+                end-of-game case.
+            - #091-#093: undoInApp removes expected plies and restores
+                turn/moves.
+            
+            URL flags
+            - #094-#096: forcedBoardKindFromQuery recognizes ?2D/?3D and
+                "3D wins" when both present.
+            
+            Stats / persistence
+            - #097: safeJsonParse returns fallback on invalid JSON.
+            - #098-#100: loadStats/saveStats/addHistory cap history and
+                handle malformed payloads safely.
+            - #101: AppState.isCpuTurn returns expected values.
+            */
+
+				function withSearch(search, fn){
+					const orig = location.search;
+					try {
+						history.replaceState(
+							null,
+							'',
+							location.pathname + search + location.hash,
+						);
+						return fn();
+					} finally {
+						history.replaceState(
+							null,
+							'',
+							location.pathname + orig + location.hash,
+						);
+					}
+				}
+
+				function setCells(board, indices, player){
+					const b = board.slice();
+					for (const i of indices) b[i] = player;
+					return b;
+				}
+
+				// -------------------------
+				// Unit tests (numbered)
+				// -------------------------
+				// 2D: win lines (all 8)
+				for (let i = 0; i < WIN_LINES_2D.length; i++){
+					const line = WIN_LINES_2D[i];
+					const name =
+						`evaluateBoard(2d) win line ${i + 1}/8 returns ` +
+						`winner+line ${JSON.stringify(line)}`;
+					T(1 + i, name, ({ eq, deepEq }) => {
+						const b = setCells(Array(9).fill(EMPTY), line, X);
+						const e = evaluateBoard(b, '2d');
+						eq(e.state, 'win');
+						eq(e.winner, X);
+						deepEq(e.line, line);
+					});
+				}
+				T(
+					9,
+					'evaluateBoard(2d) returns draw on full board',
+					({ eq }) => {
+					const b = [X, O, X, X, O, O, O, X, X];
+					const e = evaluateBoard(b, '2d');
+					eq(e.state, 'draw');
+				},
+				);
+				T(
+					10,
+					'evaluateBoard(2d) returns playing on non-terminal board',
+					({ eq }) => {
+						const b = [
+							X, EMPTY, EMPTY,
+							EMPTY, O, EMPTY,
+							EMPTY, EMPTY, X,
+						];
+						const e = evaluateBoard(b, '2d');
+						eq(e.state, 'playing');
+					},
+				);
+				T(
+					11,
+					'evaluateBoard(2d) invalid state returns first ' +
+						'win encountered (stable)',
+					({ eq, deepEq }) => {
+						// Two wins simultaneously (not a legal game state). The
+						// evaluator returns the first matching line.
+						const b = [
+							X, X, X,
+							O, O, O,
+							EMPTY, EMPTY, EMPTY,
+						];
+						const e = evaluateBoard(b, '2d');
+						eq(e.state, 'win');
+						eq(e.winner, X);
+						deepEq(e.line, [0, 1, 2]);
+					},
+				);
+
+				// 3D: win-line generation + evaluator
+				T(12, 'idx3 coordinate mapping sanity', ({ eq }) => {
+					eq(idx3(0, 0, 0), 0);
+					eq(idx3(0, 0, 2), 2);
+					eq(idx3(0, 1, 0), 3);
+					eq(idx3(1, 0, 0), 9);
+					eq(idx3(2, 2, 2), 26);
+				});
+				T(13, 'WIN_LINES_3D count is 49', ({ eq }) => {
+					eq(WIN_LINES_3D.length, 49);
+				});
+				T(
+					14,
+					'WIN_LINES_3D indices are within [0, 26]',
+					({ assert }) => {
+					for (const line of WIN_LINES_3D){
+						for (const idx of line){
+							const msg =
+								`Out-of-range idx ${idx} in ` +
+								`${JSON.stringify(line)}`;
+							assert(idx >= 0 && idx < 27, msg);
+						}
+					}
+				},
+				);
+				T(15, 'WIN_LINES_3D lines are unique', ({ eq }) => {
+					const s = new Set(WIN_LINES_3D.map((l) => l.join(',')));
+					eq(s.size, WIN_LINES_3D.length);
+				});
+				T(
+					16,
+					'WIN_LINES_3D each line has 3 distinct cells',
+					({ eq }) => {
+					for (const l of WIN_LINES_3D){
+						const u = new Set(l);
+						eq(u.size, 3);
+					}
+				},
+				);
+
+				for (let i = 0; i < WIN_LINES_3D.length; i++){
+					const line = WIN_LINES_3D[i];
+					const name =
+						`evaluateBoard(3d) win line ${i + 1}/49 returns ` +
+						`winner+line ${JSON.stringify(line)}`;
+					T(17 + i, name, ({ eq, deepEq }) => {
+						const b = setCells(Array(27).fill(EMPTY), line, O);
+						const e = evaluateBoard(b, '3d');
+						eq(e.state, 'win');
+						eq(e.winner, O);
+						deepEq(e.line, line);
+					});
+				}
+
+				T(
+					66,
+					'evaluateBoard(3d) returns playing on empty board',
+					({ eq }) => {
+						const e = evaluateBoard(Array(27).fill(EMPTY), '3d');
+						eq(e.state, 'playing');
+					},
+				);
+				T(
+					67,
+					'evaluateBoard(3d) draw branch: full board with ' +
+						'win-lines temporarily disabled',
+					({ eq, assert }) => {
+						// Some 3×3×3 rule sets may be "drawless" (every full
+						// board contains a line).
+						// This test validates the draw path deterministically
+						// by temporarily disabling win-line checks for the
+						// duration of the assertion.
+						const b = Array.from(
+							{ length: 27 },
+							(_, i) => (i % 2 === 0 ? X : O),
+						);
+						assert(b.every(Boolean), 'Expected full board');
+						const saved = WIN_LINES_3D.slice();
+						try {
+							WIN_LINES_3D.length = 0;
+							const e = evaluateBoard(b, '3d');
+							eq(e.state, 'draw');
+						} finally {
+							WIN_LINES_3D.length = 0;
+							WIN_LINES_3D.push(...saved);
+						}
+				});
+
+				// applyMove edge cases
+				T(68, 'applyMove rejects negative idx', ({ assert }) => {
+					let ok = false;
+					try {
+						applyMove(Array(9).fill(EMPTY), -1, X);
+					} catch {
+						ok = true;
+					}
+					assert(ok, 'Expected throw');
+				});
+				T(69, 'applyMove rejects out-of-range idx', ({ assert }) => {
+					let ok = false;
+					try {
+						applyMove(Array(9).fill(EMPTY), 9, X);
+					} catch {
+						ok = true;
+					}
+					assert(ok, 'Expected throw');
+				});
+				T(70, 'applyMove rejects non-integer idx', ({ assert }) => {
+					let ok = false;
+					try {
+						applyMove(Array(9).fill(EMPTY), 1.25, X);
+					} catch {
+						ok = true;
+					}
+					assert(ok, 'Expected throw');
+				});
+				T(71, 'applyMove rejects NaN/null idx', ({ assert }) => {
+					for (const bad of [NaN, null, undefined]){
+						let ok = false;
+						try {
+							applyMove(Array(9).fill(EMPTY), bad, X);
+						} catch {
+							ok = true;
+						}
+						assert(ok, `Expected throw for ${String(bad)}`);
+					}
+				});
+				T(72, 'applyMove rejects occupied cell', ({ assert }) => {
+					let ok = false;
+					try {
+						applyMove(
+							[
+								X, EMPTY, EMPTY,
+								EMPTY, EMPTY, EMPTY,
+								EMPTY, EMPTY, EMPTY,
+							],
+							0,
+							O,
+						);
+					} catch {
+						ok = true;
+					}
+					assert(ok, 'Expected throw');
+				});
+				T(
+					73,
+					'applyMove does not mutate the original board',
+					({ eq }) => {
+					const b0 = Array(9).fill(EMPTY);
+					const b1 = applyMove(b0, 4, O);
+					eq(b0[4], EMPTY);
+					eq(b1[4], O);
+				},
+				);
+
+				// legalMoves
+				T(74, 'legalMoves returns empty indices (2D)', ({ deepEq }) => {
+					const b = [X, EMPTY, O, EMPTY, EMPTY, X, O, EMPTY, EMPTY];
+					deepEq(legalMoves(b), [1, 3, 4, 7, 8]);
+				});
+				T(75, 'legalMoves empty when board is full', ({ eq }) => {
+					eq(legalMoves([X, O, X, X, O, O, O, X, X]).length, 0);
+				});
+				T(76, 'legalMoves works for 3D (27 cells)', ({ eq }) => {
+					const b = Array(27).fill(EMPTY);
+					b[0] = X;
+					eq(legalMoves(b).length, 26);
+				});
+
+				// CPU (2D)
+				T(
+					77,
+					'cpuPick (2D easy) takes center when available',
+					({ eq }) => {
+						eq(cpuPick(Array(9).fill(EMPTY), X, 'easy'), 4);
+					},
+				);
+				T(
+					78,
+					'cpuPick (2D easy) returns a legal move ' +
+						'when center is taken',
+					({ assert }) => {
+						const b = Array(9).fill(EMPTY);
+						b[4] = X;
+						const oldRand = Math.random;
+						Math.random = () => 0;
+						try {
+							const m = cpuPick(b, O, 'easy');
+							assert(m !== 4, 'Expected non-center move');
+							const inRange =
+								Number.isInteger(m) && m >= 0 && m < 9;
+							assert(inRange, 'Expected in-range move');
+							assert(
+								!b[m],
+								'Expected move to land on empty cell',
+							);
+						} finally {
+							Math.random = oldRand;
+						}
+					},
+				);
+				T(
+					79,
+					'cpuPick (2D hard) takes immediate winning move',
+					({ eq }) => {
+					const b = [
+						O, O, EMPTY,
+						X, X, EMPTY,
+						EMPTY, EMPTY, EMPTY,
+					];
+					eq(cpuPick(b, O, 'hard'), 2);
+					},
+				);
+				T(80, 'cpuPick (2D hard) blocks immediate loss', ({ eq }) => {
+					const b = [
+						X, X, EMPTY,
+						O, EMPTY, EMPTY,
+						EMPTY, EMPTY, EMPTY,
+					];
+					eq(cpuPick(b, O, 'hard'), 2);
+				});
+				T(81, 'cpuPick returns null when board is full', ({ eq }) => {
+					const b = [X, O, X, X, O, O, O, X, X];
+					eq(cpuPick(b, X, 'hard'), null);
+				});
+
+				// CPU (3D)
+				T(82, 'cpuPick (3D) takes immediate winning move', ({ eq }) => {
+					const b = Array(27).fill(EMPTY);
+					b[idx3(0, 0, 0)] = X;
+					b[idx3(1, 0, 0)] = X;
+					eq(cpuPick(b, X, 'easy'), idx3(2, 0, 0));
+				});
+				T(83, 'cpuPick (3D) blocks immediate loss', ({ eq }) => {
+					const b = Array(27).fill(EMPTY);
+					b[idx3(0, 2, 2)] = O;
+					b[idx3(1, 2, 2)] = O;
+					eq(cpuPick(b, X, 'easy'), idx3(2, 2, 2));
+				});
+				T(
+					84,
+					'cpuPick (3D) takes center when no win/block',
+					({ eq }) => {
+					const b = Array(27).fill(EMPTY);
+					eq(cpuPick(b, X, 'easy'), idx3(1, 1, 1));
+				},
+				);
+				T(
+					85,
+					'cpuPick (3D) returns a legal random move ' +
+						'when center taken',
+					({ assert }) => {
+						const b = Array(27).fill(EMPTY);
+						b[idx3(1, 1, 1)] = X;
+						const oldRand = Math.random;
+						Math.random = () => 0;
+						try {
+							const m = cpuPick(b, O, 'easy');
+							const inRange =
+								Number.isInteger(m) && m >= 0 && m < 27;
+							assert(inRange, 'Expected in-range move');
+							assert(
+								!b[m],
+								'Expected move to land on empty cell',
+							);
+						} finally {
+							Math.random = oldRand;
+						}
+					},
+				);
+
+				// Undo
+				T(
+					86,
+					'computeUndoPlies returns 0 when game is not playing',
+					({ eq }) => {
+					const a = new AppState();
+					a.reset();
+					a.eval = { state: 'win', winner: X, line: [0, 1, 2] };
+					eq(computeUndoPlies(a), 0);
+				},
+				);
+				T(
+					87,
+					'computeUndoPlies returns 0 when no moves exist',
+					({ eq }) => {
+					const a = new AppState();
+					a.reset();
+					eq(computeUndoPlies(a), 0);
+				},
+				);
+				T(
+					88,
+					'computeUndoPlies in PvP returns 1 when moves exist',
+					({ eq }) => {
+					const a = new AppState();
+					a.mode = 'pvp';
+					a.boardKind = '2d';
+					a.reset();
+					a.moveStack.push({ idx: 0, player: X });
+					a.eval = { state: 'playing', winner: null, line: null };
+					eq(computeUndoPlies(a), 1);
+				},
+				);
+				T(
+					89,
+					'computeUndoPlies in CPU mode returns 2 when it is ' +
+						'human turn (CPU already responded)',
+					({ eq }) => {
+					const a = new AppState();
+					a.mode = 'cpu';
+					a.youAre = X;
+					a.boardKind = '2d';
+					a.reset();
+					a.turn = X;
+					a.moveStack.push({ idx: 0, player: X });
+					a.moveStack.push({ idx: 4, player: O });
+					a.eval = { state: 'playing', winner: null, line: null };
+					eq(computeUndoPlies(a), 2);
+				});
+				T(
+					90,
+					'computeUndoPlies in CPU mode returns 1 when it is ' +
+						'CPU turn (human just moved)',
+					({ eq }) => {
+					const a = new AppState();
+					a.mode = 'cpu';
+					a.youAre = X;
+					a.boardKind = '2d';
+					a.reset();
+					a.turn = O;
+					a.moveStack.push({ idx: 0, player: X });
+					a.eval = { state: 'playing', winner: null, line: null };
+					eq(computeUndoPlies(a), 1);
+				});
+				T(
+					91,
+					'undoInApp removes 1 ply and restores turn/moves',
+					({ eq }) => {
+					const a = new AppState();
+					a.mode = 'pvp';
+					a.boardKind = '2d';
+					a.reset();
+					a.board = applyMove(a.board, 0, X);
+					a.moves = 1;
+					a.turn = O;
+					a.moveStack.push({ idx: 0, player: X });
+					a.eval = { state: 'playing', winner: null, line: null };
+					const n = undoInApp(a, 1);
+					eq(n, 1);
+					eq(a.board[0], EMPTY);
+					eq(a.turn, X);
+					eq(a.moves, 0);
+				},
+				);
+				T(92, 'undoInApp removes 2 plies in sequence', ({ eq }) => {
+					const a = new AppState();
+					a.mode = 'cpu';
+					a.youAre = X;
+					a.boardKind = '2d';
+					a.reset();
+					// Human X then CPU O.
+					a.board = applyMove(a.board, 0, X);
+					a.moves++;
+					a.moveStack.push({ idx: 0, player: X });
+					a.turn = O;
+					a.board = applyMove(a.board, 4, O);
+					a.moves++;
+					a.moveStack.push({ idx: 4, player: O });
+					a.turn = X;
+					a.eval = { state: 'playing', winner: null, line: null };
+					const n = undoInApp(a, 2);
+					eq(n, 2);
+					eq(a.board[0], EMPTY);
+					eq(a.board[4], EMPTY);
+					eq(a.turn, X);
+					eq(a.moves, 0);
+				});
+				T(
+					93,
+					'undoInApp does not underflow moves below 0',
+					({ eq }) => {
+					const a = new AppState();
+					a.mode = 'pvp';
+					a.boardKind = '2d';
+					a.reset();
+					a.moves = 0;
+					a.moveStack.push({ idx: 0, player: X });
+					a.eval = { state: 'playing', winner: null, line: null };
+					const n = undoInApp(a, 1);
+					eq(n, 1);
+					eq(a.moves, 0);
+				},
+				);
+
+				// URL flags
+				T(94, 'forcedBoardKindFromQuery: ?2D forces 2d', ({ eq }) => {
+					withSearch(
+						'?2D',
+						() => eq(forcedBoardKindFromQuery(), '2d'),
+					);
+				});
+				T(95, 'forcedBoardKindFromQuery: ?3d=1 forces 3d', ({ eq }) => {
+					withSearch(
+						'?3d=1',
+						() => eq(forcedBoardKindFromQuery(), '3d'),
+					);
+				});
+				T(
+					96,
+					'forcedBoardKindFromQuery: both present => 3d wins',
+					({ eq }) => {
+						withSearch(
+							'?2d&3d',
+							() => eq(forcedBoardKindFromQuery(), '3d'),
+						);
+					},
+				);
+
+				// Stats / persistence
+				T(
+					97,
+					'safeJsonParse returns fallback on invalid JSON',
+					({ eq }) => {
+					const fb = { ok: true };
+					eq(safeJsonParse('{nope', fb), fb);
+				},
+				);
+				T(
+					98,
+					'loadStats handles malformed payload (non-array history)',
+					({ eq }) => {
+						storage.setItem(
+							STATS_KEY,
+							JSON.stringify({ history: 123 }),
+						);
+					const s = loadStats();
+					eq(Array.isArray(s.history), true);
+					eq(s.history.length, 0);
+				},
+				);
+				T(
+					99,
+					'saveStats then loadStats round-trips and caps at ' +
+						'HISTORY_N',
+					({ eq }) => {
+					const hist = [];
+					for (let i = 0; i < HISTORY_N + 5; i++){
+						hist.push({
+							endedAt: 1000 + i,
+							winner: 'draw',
+							moves: i,
+							durationSec: 1,
+						});
+					}
+					saveStats({ history: hist });
+					const s = loadStats();
+					eq(s.history.length, HISTORY_N);
+				},
+				);
+				T(
+					100,
+					'addHistory caps history and keeps newest first',
+					({ eq }) => {
+					storage.removeItem(STATS_KEY);
+					const stats = { history: [] };
+					for (let i = 0; i < HISTORY_N + 3; i++){
+						addHistory(stats, {
+							endedAt: 2000 + i,
+							winner: 'draw',
+							moves: i,
+							durationSec: 1,
+						});
+					}
+					eq(stats.history.length, HISTORY_N);
+					eq(stats.history[0].endedAt, 2000 + (HISTORY_N + 3 - 1));
+				},
+				);
+				T(
+					101,
+					'AppState.isCpuTurn returns expected values',
+					({ eq }) => {
+					const a = new AppState();
+					a.mode = 'pvp';
+					a.youAre = X;
+					a.turn = O;
+					eq(a.isCpuTurn(), false);
+					a.mode = 'cpu';
+					a.turn = O;
+					eq(a.isCpuTurn(), true);
+					a.turn = X;
+					eq(a.isCpuTurn(), false);
+				},
+				);
+
+				const results = await tr.runAll();
+				renderTestResults(results);
+				renderCoverage();
+				runBtn.disabled = false;
+				runBtn.textContent = 'Run Tests';
+			});
+		}
+
+		async function boot(){
+			if (testsMode){
+				runTests();
+				return;
+			}
+			// Show UI immediately so a failed CDN import doesn't mean a blank
+			// page.
+			if (el.appRoot) el.appRoot.style.display = '';
+			setHud('Loading…', '');
+			setStatus(
+				`<div><strong>Loading…</strong></div>` +
+				`<div class="small">Preparing the 3D board.</div>`,
+			);
+			try {
+				await load3dLibs();
+				runApp();
+			} catch (err){
+				console.error(err);
+				const errMsg = escapeHtml(err?.message || String(err));
+				setHud(
+					'3D engine failed to load.',
+					'Check your connection and try again',
+				);
+				setStatus(
+					`<div><strong>3D engine couldn’t load.</strong></div>` +
+					`<div class="small">3D mode isn’t available ` +
+					`right now.</div>` +
+					`<div class="small" ` +
+					`style="margin-top:8px">` +
+						`<code>${errMsg}</code>` +
+					`</div>`,
+				);
+			}
+		}
+		boot();
+	</script>
+</body>
+</html>
