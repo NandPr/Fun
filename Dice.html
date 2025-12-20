@@ -17,7 +17,7 @@ Features
 - Natural ease-out physics (monotone quartic) with early reveal (~70%)
 - Responsive shadow, hover glow, and subtle idle animation
 - Details tab (bottom-left) with:
-    - Last 10 results and per-face distribution
+    - Last 20 results and per-face distribution
     - Sound toggle (off by default)
     - Faces input (2–20) and a Heads/Tails hint for D2
 - Confetti burst on max roll (e.g. 6 on D6, 20 on D20, Tails on D2)
@@ -25,6 +25,7 @@ Features
     - Dice: plastic-on-wood bounce/impact model
     - Coin: metallic tings + clinks + filtered noise
 - Built-in unit tests (add `?tests=1` to the URL)
+- Optional URL parameter: `?faces=<number>` sets the initial face count
 
 Technical Details
 ------------------------------------------------------------------------
@@ -37,7 +38,8 @@ How to Use
 2. Click the die/coin or press Space/Enter to roll
 3. Open Details to change Faces and view History/Distribution
 4. (Optional) Enable sound in Details
-5. Add `?tests=1` to run unit tests
+5. Add `?faces=20` (or any 2–20) to set starting faces
+6. Add `?tests=1` to run unit tests
 
 ========================================================================
 -->
@@ -1473,6 +1475,45 @@ How to Use
                 return 6;
             }
             return Math.max(2, Math.min(20, Math.round(n)));
+        }
+
+        function getFacesParamFromSearch(search) {
+            try {
+                const qs = new URLSearchParams(String(search || ''));
+                const raw = qs.get('faces');
+                if (raw === null || raw === '') {
+                    return null;
+                }
+
+                const n = Number(raw);
+                if (!Number.isFinite(n)) {
+                    return null;
+                }
+
+                return n;
+            } catch {
+                return null;
+            }
+        }
+
+        function applyFacesParamFromSearch(search) {
+            const faces = getFacesParamFromSearch(search);
+            if (faces === null) {
+                return false;
+            }
+            setDiceFaceCount(faces);
+            return true;
+        }
+
+        // Apply initial face count from URL (?faces=<number>) without
+        // calling setDiceFaceCount yet (rollHistory isn't initialized).
+        // This only sets the initial value; later UI init uses diceFaceCount.
+        {
+            const faces = getFacesParamFromSearch(window.location.search);
+            if (faces !== null) {
+                diceFaceCount = clampFaceCount(faces);
+                window.diceFaceCount = diceFaceCount;
+            }
         }
 
         function updateFaceCountValidity() {
@@ -3081,6 +3122,12 @@ How to Use
             let testsFailed = 0;    // Counter for failed tests
             let testsRunning = false; // Prevents concurrent test runs
 
+            // Keep the suite deterministic regardless of URL (?faces=...).
+            // Many tests assume the default cube (D6) mode.
+            if (diceFaceCount !== 6) {
+                setDiceFaceCount(6);
+            }
+
             /**
              * Register a test case for later execution
              * @param {string} name - Descriptive name shown in results
@@ -3741,6 +3788,8 @@ How to Use
             #131: Sound: d2 coin sound silent when disabled
             #132: Config: face count out of range is invalid
             #133: History: distribution deviation colors
+            #134: URL: faces query param sets face count
+            #135: URL: invalid faces param is ignored
             */
 
             // ------------------------------------------------------------
@@ -5340,6 +5389,7 @@ How to Use
                     assert(cb !== null, 'sound checkbox should exist');
 
                     window.celebrationPlayCount = 0;
+                    celebrationLastPlayTime = -Infinity;
                     soundCtx = null;
                     cb.checked = true;
                     cb.dispatchEvent(new Event('change'));
@@ -5718,6 +5768,32 @@ How to Use
                 assert(f1.classList.contains('dist-good'), '1 should be good');
                 assert(f2.classList.contains('dist-ok'), '2 should be ok');
                 assert(f6.classList.contains('dist-bad'), '6 should be bad');
+
+                setDiceFaceCount(prev);
+            });
+
+            test('URL: faces query param sets face count', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(6);
+
+                const applied = applyFacesParamFromSearch('?faces=20');
+                eq(applied, true);
+                eq(diceFaceCount, 20);
+
+                const label = document.getElementById('die2dLabel');
+                assert(label !== null, 'die2dLabel should exist');
+                eq(label.textContent, 'D20');
+
+                setDiceFaceCount(prev);
+            });
+
+            test('URL: invalid faces param is ignored', () => {
+                const prev = diceFaceCount;
+                setDiceFaceCount(6);
+
+                const applied = applyFacesParamFromSearch('?faces=not-a-number');
+                eq(applied, false);
+                eq(diceFaceCount, 6);
 
                 setDiceFaceCount(prev);
             });
